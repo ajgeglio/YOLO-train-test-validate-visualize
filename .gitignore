@@ -47,3 +47,7 @@ test_runs/tmp5/
 yolo_inference_gui.spec
 *.spec
 output
+.vscode/
+__pycache__/
+*.pyc
+backup*

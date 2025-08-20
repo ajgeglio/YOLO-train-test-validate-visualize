@@ -3,14 +3,14 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from utils import Utils
+from predicting import PredictOutput
+from reports import Reports
 from ultralytics import YOLO
 import torch
 from timeit import default_timer as stopwatch
 import glob
 import pandas as pd
 import argparse
-from predicting import PredictOutput
-from reports import Reports
 
 def setup_environment():
     """Ensure the bundled certificates are used."""
@@ -68,18 +68,18 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Yolov8 inference, prediction and scoring for goby detection")
     parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
     parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
-    parser.add_argument('--img_directory', dest='img_directory', default=None, help='Directory of Images')
-    parser.add_argument('--img_list_csv', dest="img_list_csv", default=None, help='Path to csv list of image paths')
-    parser.add_argument('--lbl_list_csv', dest="lbl_list_csv", default=None, help='Path to csv list of label paths')
-    parser.add_argument('--weights', dest="weights", default=r"src\models\GobyFinderAUV.pt", help='Weights path')
-    parser.add_argument('--start_batch', dest="start_batch", default=0, type=int, help='Start at batch if interrupted')
+    parser.add_argument('--img_directory', default=None, help='Directory of Images')
+    parser.add_argument('--img_list_csv', default=None, help='Path to csv list of image paths')
+    parser.add_argument('--lbl_list_csv', default=None, help='Path to csv list of label paths')
+    parser.add_argument('--weights', default=r"src\models\GobyFinderAUV.pt", help='Weights path')
+    parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
     parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
     parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
-    parser.add_argument('--output_name', dest='output_name', default="inference_output", type=str, help='Name of the output csv')
-    parser.add_argument('--batch_size', dest='batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
-    parser.add_argument('--img_size', dest='img_size', default=2048, type=int, help='Max image dimension')
-    parser.add_argument('--iou', dest='iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
-    parser.add_argument('--confidence', dest='confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
+    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
+    parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
+    parser.add_argument('--img_size', default=2048, type=int, help='Max image dimension')
+    parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
+    parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     return parser.parse_args()
 
@@ -94,7 +94,8 @@ def main():
 
     # get args
     args = parse_arguments()
-    output_name = os.path.join(args.output_name + "_" + name_time)
+    # output_name = os.path.join(args.output_name + "_" + name_time)
+    output_name = args.output_name
     # Setup paths and logging
     run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", output_name)
     os.makedirs(run_path, exist_ok=True)
@@ -118,10 +119,16 @@ def main():
 
     # Prepare CSV files for predictions and labels
     pred_csv_path = os.path.join(run_path, "predictions.csv")
-    pd.DataFrame(columns=['Filename', 'names', 'cls', 'x', 'y', 'w', 'h', 'conf', 'imh', 'imw']).to_csv(pred_csv_path, mode='w', header=True)
+    try:
+        pd.DataFrame(columns=['Filename', 'names', 'cls', 'x', 'y', 'w', 'h', 'conf', 'imh', 'imw']).to_csv(pred_csv_path, mode='x', header=True)
+    except FileExistsError:
+        print("Prediction CSV already exists, appending results.")
     if args.has_labels:
         lbl_csv_path = os.path.join(run_path, f"labels.csv")
-        pd.DataFrame(columns=['Filename', 'names', 'cls', 'x', 'y', 'w', 'h', 'imh_l', 'imw_l']).to_csv(lbl_csv_path, mode='w', header=True)
+        try:
+            pd.DataFrame(columns=['Filename', 'names', 'cls', 'x', 'y', 'w', 'h', 'imh_l', 'imw_l']).to_csv(lbl_csv_path, mode='x', header=True)
+        except FileExistsError:
+            print("Label CSV already exists, appending results.")
 
     # Prediction loop
     n_batches = (len(image_list) - 1) // batch_size + 1
@@ -155,8 +162,8 @@ def main():
     
     if args.has_labels:
         save_labels_to_csv(lbl, lbl_csv_path)
-        df_pred, df_lbls = Reports().generate_summary(pred_csv_path, lbl_csv_path)
-        df_scores = Reports().scores_df(df_lbls, df_pred, iou_tp=0.5)
+        df_pred, df_lbls = Reports.generate_summary(pred_csv_path, lbl_csv_path)
+        df_scores = Reports.scores_df(df_lbls, df_pred, iou_tp=0.5)
         df_scores.to_csv(os.path.join(run_path, "scores.csv"))
 
     # Handle cages if required

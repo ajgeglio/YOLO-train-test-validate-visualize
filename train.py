@@ -14,7 +14,7 @@ def parse_arguments():
     parser.add_argument('--data_yml', default=None, help='YAML file for data')
     parser.add_argument('--resume', action='store_true', help='Resume training from the last checkpoint')
     parser.add_argument('--output_name', default="training_run", type=str, help='Name of the training run')
-    parser.add_argument('--batch_size', default=4, type=int, help='Batch size for training')
+    parser.add_argument('--batch_size', default=-1, type=int, help='Batch size for training, defaults to -1 for autobatch')
     parser.add_argument('--epochs', default=500, type=int, help='Maximum number of training epochs')
     parser.add_argument('--patience', default=16, type=int, help='Number of epochs to wait after the best validation loss')
     parser.add_argument('--img_size', default=2048, type=int, help='Maximum image dimension')
@@ -67,7 +67,7 @@ def main():
 
     # Train the model
     model.train(
-        data=args.data_yaml,
+        data=args.data_yml,
         resume=args.resume,
         pretrained=True,
         epochs=args.epochs,

@@ -91,7 +91,9 @@ def main():
         raise ValueError("No images found in the specified directories.")
     if args.has_labels and not label_list:
         raise ValueError("No labels found in the specified directories.")
-
+    
+    if sample_n_imgs is None:
+        sample_n_imgs = len(image_list)
     if len(image_list) < sample_n_imgs:
         raise ValueError(f"Not enough images to sample {sample_n_imgs}. Found {len(image_list)} images.")
     if args.has_labels and len(label_list) < sample_n_imgs:
@@ -107,23 +109,23 @@ def main():
     labels = args.has_labels
 
     if labels:
-        df_lbl, df_prd = Testing().return_lbl_pred_df(results, lbls, imgs)
-        df_scores = Reports().scores_df(df_lbl, df_prd, iou_tp=0.5)
+        df_lbl, df_prd = Testing.return_lbl_pred_df(results, lbls, imgs)
+        df_scores = Reports.scores_df(df_lbl, df_prd, iou_tp=0.5)
         df_scores.to_csv(os.path.join(run_path, f"scores.csv"), index=False)
         df_lbl.to_csv(os.path.join(run_path, f"labels.csv"), index=False)
         df_prd.to_csv(os.path.join(run_path, f"predictions.csv"), index=False)
         print("Labels and predictions saved to csvs")
     else:
-        df_prd = Testing().return_pred_df(results, imgs)
+        df_prd = Testing.return_pred_df(results, imgs)
         df_prd.to_csv(os.path.join(run_path, f"predictions.csv"), index=False)
         print("Predictions saved to csv")
     if plot:
         if labels:
             for img_pth in imgs:
-                Overlays().save_annot_imgs2(img_pth, df_scores, df_lbl, plots_folder, conf_thresh)
+                Overlays.save_annot_imgs2(img_pth, df_scores, df_lbl, plots_folder, conf_thresh)
         else:
             for img_pth in imgs:
-                Overlays().save_annot_imgs_pred_only(img_pth, df_prd, plots_folder, conf_thresh)
+                Overlays.save_annot_imgs_pred_only(img_pth, df_prd, plots_folder, conf_thresh)
 
 if __name__ == "__main__":
     main()

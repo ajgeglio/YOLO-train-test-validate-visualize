@@ -14,10 +14,10 @@ class TestYOLOInference(unittest.TestCase):
         self.start_time = stopwatch()
         torch.cuda.empty_cache()
         self.now = datetime.datetime.now()
-        self.test_output = "inference_output"
+        self.test_output = "unittester_output"
         self.test_dir = "test_images"
         self.test_csv = "test_image_list.csv"
-        self.weights_path = "Best_Model_Weights/train/run12+_bbox_png/train/best.pt"
+        self.weights_path = "yolov8x.pt"
     
     @patch('argparse.ArgumentParser.parse_args')
     def test_argparse(self, mock_parse_args):

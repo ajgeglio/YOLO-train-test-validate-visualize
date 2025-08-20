@@ -5,10 +5,14 @@ import PIL
 from PIL import ImageDraw, ImageFont
 import PIL.Image as Image
 import numpy as np
+import json
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 
 class Overlays:
-    def save_annot_imgs(self, img_pth, scores_df, save_path, conf_thresh, background = "image"):
+    @staticmethod
+    def save_annot_imgs(img_pth, scores_df, save_path, conf_thresh, background = "image"):
         img_name = os.path.basename(img_pth)
         img_id = img_name.split(".")[0]
         img_array = cv2.imread(img_pth)
@@ -67,7 +71,8 @@ class Overlays:
             img.save(os.path.join(save_path,f"{img_id}_a.jpg")) 
         else: print("no fish enumerated or dectected")
 
-    def save_annot_imgs2(self, img_pth, scores_df, lbl_df, save_path, conf_thresh, background = "image"):
+    @staticmethod
+    def save_annot_imgs2(img_pth, scores_df, lbl_df, save_path, conf_thresh, background = "image"):
         img_name = os.path.basename(img_pth)
         img_id = img_name.split(".")[0]
         img_array = cv2.imread(img_pth)
@@ -129,7 +134,8 @@ class Overlays:
             img.save(os.path.join(save_path,f"{img_id}_a.jpg")) 
         else: print("no fish enumerated or dectected")
     
-    def save_annot_imgs_hybrid(self, img_pth, hybrid_df, pred_df, save_path, conf_thresh, background = "image"):
+    @staticmethod
+    def save_annot_imgs_hybrid(img_pth, hybrid_df, pred_df, save_path, conf_thresh, background = "image"):
         def convert_bbox(row):
             x, y, w, h = row.loc['bbox']
             # xmax, xmin = x + w/2, x - w/2
@@ -175,7 +181,8 @@ class Overlays:
         if n_fish > 0:
             img.save(os.path.join(save_path,f"{img_id}_a.jpg")) 
 
-    def save_annot_imgs_obb(self, img_pth, lbl_df, score_df, save_path, conf_thresh, background = "image"):
+    @staticmethod
+    def save_annot_imgs_obb(img_pth, lbl_df, score_df, save_path, conf_thresh, background = "image"):
         img_name = os.path.basename(img_pth)
         img_id = img_name.split(".")[0]
         img_array = cv2.imread(img_pth)
@@ -234,7 +241,8 @@ class Overlays:
         if n_fish > 0:
             img.save(os.path.join(save_path,f"{img_id}_a.jpg")) 
 
-    def save_annot_imgs_pred_only(self, img_pth, pred_df, save_path, conf_thresh, background = "image"):
+    @staticmethod
+    def save_annot_imgs_pred_only(img_pth, pred_df, save_path, conf_thresh, background = "image"):
         img_name = os.path.basename(img_pth)
         img_id = img_name.split(".")[0]
         filename = os.path.join(save_path, f"{img_id}_i.jpg")
@@ -274,6 +282,7 @@ class Overlays:
                 draw.text((x22, y22), text=text_, fill="white", stroke=8, stroke_color="white", font=font, anchor='rt')
                 img.save(filename)
 
+    @staticmethod
     def disp_bbox_mask(mask_array, df):
         # mask_array = cv2.imread(msk_file)
         msk_img = PIL.Image.fromarray(mask_array)
@@ -290,6 +299,8 @@ class Overlays:
             draw.rectangle((x1,y1,x2,y2), outline=(200), width=1)
             draw.ellipse((x-s,y-s,x+s,y+s), fill=(200))
         return msk_img
+    
+    @staticmethod
     def disp_lbl_bbox(img_path, lbl_path):
         assert os.path.basename(img_path).split(".")[0] ==  os.path.basename(lbl_path).split(".")[0]
         img_array = cv2.imread(img_path)[:, :, ::-1]
@@ -311,28 +322,7 @@ class Overlays:
         except: print("label not processed")
         return img
     
-    def disp_bbox_only(img_path, lbl_path):
-        assert os.path.basename(img_path).split(".")[0] ==  os.path.basename(lbl_path).split(".")[0]
-        img_array = cv2.imread(img_path)
-        im_h, im_w = img_array.shape[0], img_array.shape[1]
-        blank = Image.new("RGB", (im_w, im_h), color="white")
-        draw = PIL.ImageDraw.Draw(blank)
-        s=6
-        try:
-            df = pd.read_csv(lbl_path, delimiter=' ', header=None)
-            # df = lbl
-            for index, row in df.iterrows():
-                x, y, w, h = row[1]*im_w, row[2]*im_h, row[3]*im_w, row[4]*im_h
-                # print(x,y,w,h)
-                x1 = x - w/2
-                y1 = y - h/2
-                x2 = x + w/2
-                y2 = y + h/2
-                draw.rectangle((x1,y1,x2,y2), outline="black", width=1)
-                # draw.ellipse((x-s,y-s,x+s,y+s), fill=(200))
-        except: pass
-        return blank
-    
+    @staticmethod
     def disp_merr_bbox(img_path, mlbl_path):
         assert os.path.basename(img_path).split(".")[0] ==  os.path.basename(mlbl_path).split(".")[0]
         img_array = cv2.imread(img_path)[:, :, ::-1]
@@ -348,3 +338,91 @@ class Overlays:
                 draw.polygon([x1, y1, x2, y2, x3, y3, x4, y4], outline="red", width=1)
         except: pass
         return img
+    
+    def plot_coco_boxes(image_path, json_path, target_size=(2048, 1500)):
+        """
+        Plots bounding boxes from a COCO JSON file onto a resized image.
+
+        Args:
+            image_path (str): The file path to the image.
+            json_path (str): The file path to the COCO JSON annotation file.
+            target_size (tuple): The desired display size as a tuple (width, height).
+        """
+        try:
+            # Load the image
+            image = cv2.imread(image_path)
+            if image is None:
+                print(f"Error: Could not load image from path: {image_path}")
+                return
+            
+            # Get original image dimensions
+            original_h, original_w = image.shape[:2]
+
+            # Resize the image for display
+            resized_image = cv2.resize(image, target_size, interpolation=cv2.INTER_AREA)
+            resized_image = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
+            
+            # Load the COCO JSON data
+            with open(json_path, 'r') as f:
+                coco_data = json.load(f)
+                
+            # Extract image filename from the path
+            image_filename = os.path.basename(image_path)
+
+            # Find the image ID from the JSON file
+            image_id = -1
+            for img in coco_data['images']:
+                if img['file_name'] == image_filename:
+                    image_id = img['id']
+                    break
+            
+            if image_id == -1:
+                print(f"Error: Image '{image_filename}' not found in JSON.")
+                return
+
+            # Create a plot
+            fig, ax = plt.subplots(1, figsize=(12, 9))
+            ax.imshow(resized_image)
+            
+            # Calculate scaling factors
+            scale_x = target_size[0] / original_w
+            scale_y = target_size[1] / original_h
+
+            # Plot the bounding boxes for the corresponding image
+            for ann in coco_data['annotations']:
+                if ann['image_id'] == image_id:
+                    bbox = ann['bbox']
+                    
+                    # Scale the bounding box coordinates
+                    x_scaled = bbox[0] * scale_x
+                    y_scaled = bbox[1] * scale_y
+                    w_scaled = bbox[2] * scale_x
+                    h_scaled = bbox[3] * scale_y
+                    
+                    rect = patches.Rectangle(
+                        (x_scaled, y_scaled), w_scaled, h_scaled,
+                        linewidth=0.5, edgecolor='r', facecolor='none'
+                    )
+                    ax.add_patch(rect)
+                    
+                    # Optional: Add category label
+                    category_id = ann['category_id']
+                    category_name = "unknown"
+                    for cat in coco_data['categories']:
+                        if cat['id'] == category_id:
+                            category_name = cat['name']
+                            break
+                    plt.text(x_scaled, y_scaled - 5, category_name, color='red', fontsize=12)
+
+            ax.axis('off')
+            plt.show()
+
+        except FileNotFoundError:
+            print(f"Error: One of the files was not found. Please check paths:\nImage: {image_path}\nJSON: {json_path}")
+        except json.JSONDecodeError:
+            print(f"Error: The JSON file is not in a valid format.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
+    # Example usage with a specified target size
+    # plot_coco_boxes('path/to/your/image.jpg', 'path/to/your/annotations.json', target_size=(2048, 1500))

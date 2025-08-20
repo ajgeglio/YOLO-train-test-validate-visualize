@@ -4,7 +4,7 @@ import numpy as np
 from utils import *
 
 class YOLOResults:
-    def __init__(self, meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh=0.001):
+    def __init__(self, meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh=0.1):
         self.meta_path = meta_path
         self.yolo_infer_path = yolo_infer_path
         self.substrate_path = substrate_path
@@ -30,8 +30,8 @@ class YOLOResults:
         try:
             infer = pd.read_csv(yolo_infer_path, index_col=0)
             infer["conf"] = infer["conf"].astype(float)
-            infer = infer[infer["conf"] >= 0.1]
-            infer["Filename"] = infer["Filename"].str.replace("CI_", "PI_").apply(lambda x: x.split(".")[0])
+            infer = infer[infer["conf"] >= 0.099]
+            # infer["Filename"] = infer["Filename"].str.replace("CI_", "PI_").apply(lambda x: x.split(".")[0])
             print("Total objects in inference", infer.shape)
             n_im_inferred = infer["Filename"].nunique()
             print("Number of images inferred", n_im_inferred)
@@ -97,7 +97,7 @@ class YOLOResults:
         if op_path is not None and isinstance(op_path, str) and op_path.strip() != "":
             try:
                 # Load site IDs
-                site_ids = pd.read_excel(op_path)[["COLLECT_ID", "SURVEY123_NAME", "LAKE"]].rename(columns={"COLLECT_ID": "CollectID"})
+                site_ids = pd.read_excel(op_path)[["COLLECT_ID", "MISSION_NAME", "LAKE_NAME"]].rename(columns={"COLLECT_ID": "CollectID"})
             except Exception as e:
                 print("Error loading site IDs from OP table:", e)
     
@@ -121,7 +121,7 @@ class YOLOResults:
         conf_thresh = self.conf_thresh
         df_combined = self.combine_meta_pred_substrate(**kwargs)
         columns_ = [
-            "Time_s", "Filename", "SURVEY123_NAME", "LAKE", "Fish_ID", "x", "y", "w", "h", "conf", "conf_pass",
+            "Time_s", "Filename", "MISSION_NAME", "LAKE_NAME", "Fish_ID", "x", "y", "w", "h", "conf", "conf_pass",
             "imw", "imh", "detect_id", "ground_truth_id", "Latitude", "Longitude",
             "DepthFromSurface_m", "DistanceToBottom_m", "Speed_kn", "Time_UTC", "image_path",
             "CollectID", "PS_mm", "ImageArea_m2", "year", "month", "day", "time",

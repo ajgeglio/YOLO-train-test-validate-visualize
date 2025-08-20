@@ -9,6 +9,8 @@ import PIL.Image
 from pathlib import Path
 import sys
 import json
+import zipfile
+import fnmatch
 
 class ReturnTime:
     def __init__(self):
@@ -41,14 +43,21 @@ class ReturnTime:
         return dt.strftime('%H:%M:%S') if isinstance(dt, datetime.datetime) else np.nan
 
 class Utils:
-    def __init__(self) -> None:
-        pass
 
+    @staticmethod
     def seconds_to_hours_minutes(seconds):
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         return f"{hours} hours, {minutes} minutes"
     
+    @staticmethod
+    def list_files_in_zip(zip_path, pattern):
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            file_list = zip_ref.namelist()
+            matched_files = [f for f in file_list if fnmatch.fnmatch(f, pattern)]
+        return matched_files
+
+    @staticmethod
     def verify_images(images):
         """Verify images to ensure they are not corrupted."""
         for img_path in images:
@@ -59,6 +68,7 @@ class Utils:
                 print(f"Removing {img_path} from list because it is not compatible")
         return
     
+    @staticmethod
     def initialize_logging(path, output_name, suppress_log):
         """Set up logging to a file if not suppressed."""
         if not suppress_log:
@@ -69,10 +79,12 @@ class Utils:
             sys.stdout = log_file
         return sys.stdout
     
+    @staticmethod
     def write_list_txt(filename, lst):
         with open(filename, "w") as f:
             f.writelines("%s\n" % l for l in lst)
 
+    @staticmethod
     def make_imgs_nms_unique(img_pth_lst):
         # turn path strings into lists
         spl_pth_lst = list(map(lambda x: Path(x).parts, img_pth_lst))
@@ -82,16 +94,19 @@ class Utils:
         new_img_nms_lst = list(map(lambda x: x.replace(" ", ""), new_img_nms_lst))  
         return new_img_nms_lst
     
-    def nearest_index(self, array, value):
+    @staticmethod
+    def nearest_index(array, value):
         # for getting approximately evently spaced indices from data randomly distributed
         return (np.abs(np.asarray(array) - value)).argmin()
 
-    def evenly_spaced_indices(self, array, step=0.1):
+    @staticmethod
+    def evenly_spaced_indices(array, step=0.1):
         if step == 'AUC':
             return range(len(array))
         else:
-            return [self.nearest_index(array, value) for value in np.arange(np.min(array), np.max(array), step)]
-        
+            return [Utils.nearest_index(array, value) for value in np.arange(np.min(array), np.max(array), step)]
+
+    @staticmethod
     def list_files_exclude_pattern(filepath, filetype, pat):
         paths = []
         for root, dirs, files in os.walk(filepath):
@@ -103,6 +118,7 @@ class Utils:
                         paths.append(os.path.join(root, file))
         return(paths)
 
+    @staticmethod
     def list_folders_w_pattern(pth, pat):
         folders = []
         for root, dirs, files in os.walk(pth):
@@ -112,6 +128,7 @@ class Utils:
         folders = [sublist for list in extra_folders for sublist in list]
         return folders
 
+    @staticmethod
     def list_collects(filepath):
         paths = []
         for root, dirs, files in os.walk(filepath):
@@ -123,6 +140,7 @@ class Utils:
         collects = list(set([item for sublist in collects for item in sublist]))
         return(collects)
 
+    @staticmethod
     def list_files(filepath, filetype):
         paths = []
         for root, dirs, files in os.walk(filepath):
@@ -131,13 +149,15 @@ class Utils:
                     paths.append(os.path.join(root, file))
         return(paths)
 
+    @staticmethod
     def create_empty_txt_files(empty_id_list, ext=".txt"):
         for fil in empty_id_list:
             file = fil + f"{ext}"
             with open(file, 'w'):
                 continue
 
-    def make_move_df(self, orig_pth, new_pth, ext = ".txt"):
+    @staticmethod
+    def make_move_df(orig_pth, new_pth, ext = ".txt"):
         descr = os.path.join(orig_pth,"*"+ext)
         files = glob.glob(descr)
         df = pd.DataFrame(files, columns=["original_path"])
@@ -147,18 +167,20 @@ class Utils:
         df['new_path'] = df.original_filename.apply(np)
         return df
 
-    def move_files_lst(self, orig_pth, new_pth, ext = ".txt"):
-        move_df = self.make_move_df(orig_pth, new_pth, ext = ".txt")
+    @staticmethod
+    def move_files_lst(orig_pth, new_pth, ext = ".txt"):
+        move_df = Utils.make_move_df(orig_pth, new_pth, ext = ".txt")
         i = 0
         k = 0
         l = len(move_df)
         for src, dst in zip(move_df.original_path, move_df.new_path):
             if not os.path.exists(dst):
-                shutil.copy(src,dst)
+                shutil.move(src,dst)
                 k+=1
             i+=1
             print("file", i,"/",l,"new items found", k, end=" \r")
 
+    @staticmethod
     def make_timestamp_folder():
         t = datetime.datetime.now()
         timestring = f"{t.year:02d}{t.month:02d}{t.day:02d}-{t.hour:02d}{t.minute:02d}{t.second:02d}"
@@ -169,6 +191,7 @@ class Utils:
         print(out_folder)
         return out_folder, Ymmdd
     
+    @staticmethod
     def create_collect_id_df(imgs_glob):
         ''' create a dataframe of collect ids based on a list of images'''
         df = pd.DataFrame()
@@ -183,11 +206,13 @@ class Utils:
         df['collect_id'] = collect_ids
         return df
 
+    @staticmethod
     def copy_files_lst(pth_lst, dest, overwrite=True):
         if not os.path.exists(dest):
             os.makedirs(dest)
         n_files = len(pth_lst)
         for i, pth in enumerate(pth_lst):
+            i += 1
             if pth == pth:
                 if overwrite == True:
                     nm = os.path.basename(pth)
@@ -209,6 +234,7 @@ class Utils:
                         else: continue #the exact file name and size already exists
             else: continue
     
+    @staticmethod
     def copy_and_replace_directory(src, dst):
         n_dir = len(os.listdir(dst))
         print("dst dir has", n_dir, "files")
@@ -222,12 +248,14 @@ class Utils:
             print("sample", i,'/',n_files, end='  \r')
             i += 1
 
+    @staticmethod
     def get_shape_pil(self, fname):
         try:
             img=PIL.Image.open(fname)
         except: img = PIL.Image.new("RGB", (10,10))
         return (img.height, img.width)
     
+    @staticmethod
     def make_img_df_folder(self, img_folder, ext=".png"):
     # use to check a list of images and get dates times and their dimensions(not good for very large lists)
         img_pths = glob.glob(os.path.join(img_folder,"*"+ext))
@@ -243,6 +271,7 @@ class Utils:
         df["datetime"] = df.time_s.apply(tdt)
         return df
     
+    @staticmethod
     def make_img_df_list(self, img_pths):
         tim = lambda x: os.path.basename(x)
         tid = lambda x: str(x).split(".")[0]
@@ -256,114 +285,92 @@ class Utils:
         df["datetime"] = df.time_s.apply(tdt)
         return df
     
-    def return_objects_in_lbl(self, lbl_file):
+    @staticmethod
+    def return_n_objects_in_lbl(lbl_file):
         try:
-            n_fish = pd.read_csv(lbl_file, delimiter=' ', header=None).shape[0]
-        except: n_fish = 0
-        return n_fish
+            n_objects = pd.read_csv(lbl_file, delimiter=' ', header=None).shape[0]
+        except: n_objects = 0
+        return n_objects
     
-    def count_objects_in_split(self, directory, split):
+    @staticmethod
+    def count_n_objects_in_split(directory, split):
         lbl_lst_pths = glob.glob(os.path.join(directory,split,"labels","*.txt"))
         i = 0
         for lbl_file in lbl_lst_pths:
-            num_objects = self.return_objects_in_lbl(lbl_file)
+            num_objects = Utils.return_objects_in_lbl(lbl_file)
             i += num_objects
         print(f"num objects in {split} is {i}")
     
-    def count_objects_in_id_list(self, directory, id_lst):
+    @staticmethod
+    def count_objects_in_id_list(directory, id_lst):
         lbl_lst = list(map(lambda x: str(x)+".txt", id_lst))
         lbl_lst_pths = list(map(lambda x: os.path.join(directory, x), lbl_lst))
         i = 0
         for lbl_file in lbl_lst_pths:
-            num_objects = self.return_objects_in_lbl(lbl_file)
+            num_objects = Utils.return_objects_in_lbl(lbl_file)
             i += num_objects
         print(f"num objects in list is {i}")
 
-    def make_master_lbl_df(lbl_path_lst_yr):
-        lbl_lst = []
-        for idx, row in lbl_path_lst_yr.iterrows():
-            lbl_file, yr = row
-            lbl = pd.read_csv(lbl_file, sep=' ', names=["cls","x","y","w","h"], index_col=None)
-            image_id = os.path.basename(lbl_file).split(".")[0]
-            lbl['Filename'] = image_id
-            lbl['id'] = lbl.index.astype(int)
-            lbl['year'] = yr
-            lbl_lst.append(lbl)
-        master_lbl_df = pd.concat(lbl_lst, ignore_index=True)
-        master_lbl_df['fish_id'] = master_lbl_df.image_id.astype(str) +"_"+ master_lbl_df.id.astype(str)
-        master_lbl_df = master_lbl_df[["Filename", "id", "fish_id", "cls","x","y","w","h", "year"]]
-        return master_lbl_df.reset_index(drop=True)
-        
-    def make_master_lbl_df_gopro(lbl_path_lst):
-        lbl_lst = []
-        for lbl_file in lbl_path_lst:
-            lbl = pd.read_csv(lbl_file, sep=' ', names=["cls","x","y","w","h"], index_col=None)
-            image_id = os.path.basename(lbl_file).split(".")[0]
-            lbl['image_id'] = image_id
-            lbl['id'] = lbl.index.astype(int)
-            lbl_lst.append(lbl)
-        master_lbl_df = pd.concat(lbl_lst, ignore_index=True)
-        master_lbl_df['fish_id'] = master_lbl_df.image_id.astype(str) +"_"+ master_lbl_df.id.astype(str)
-        master_lbl_df = master_lbl_df[["image_id", "id", "fish_id", "cls","x","y","w","h"]]
-        return master_lbl_df.reset_index(drop=True)
-    
-    def pred_df_to_coco_json(pred_df_pth, save_json_pth):
-        data = pd.read_csv(pred_df_pth, index_col=0)
-        images = []
-        categories = []
-        annotations = []
+    @staticmethod
+    def print_lbl_img_discrepancy(dir_img, dir_lbl):
+        lbls = glob.glob(os.path.join(dir_lbl , "*"))
+        imgs = glob.glob(os.path.join(dir_img, "*"))
+        id = lambda x: str(os.path.basename(x)).split(".")[0]
+        lbl_ids = list(map(id, lbls))
+        img_ids = list(map(id, imgs))
+        print("n lbls", len(lbl_ids))
+        print("n imgs", len(img_ids))
+        lbl_id_diff = set(lbl_ids).difference(set(img_ids))
+        img_id_diff = set(img_ids).difference(set(lbl_ids))
+        print(f"extra lbls {len(lbl_id_diff)}, extra imgs {len(img_id_diff)}")
+        return lbl_id_diff, img_id_diff
 
-        category = {}
-        category["supercategory"] = None
-        category["id"] = None
-        category["name"] = None
-        categories.append(category)
-        
-        data['fileid'] = data['filename'].astype('category').cat.codes
-        data['categoryid']= pd.Categorical(data['names'],ordered= True).codes
-        data['annid'] = data.index
+    @staticmethod
+    def sort_and_move_discrepancy(dir_has_extra, dir_is_correct, dst):
+        has_extra = glob.glob(os.path.join(dir_has_extra , "*"))
+        is_correct = glob.glob(os.path.join(dir_is_correct, "*.png"))
+        id = lambda x: str(os.path.basename(x)).split(".")[0]
+        lbnm = lambda x: str(x).split(".")[0] + ".txt"
+        jpnm = lambda x: str(x) + ".jpg"
+        has_extra_ids = list(map(id, has_extra))
+        is_correct_ids = list(map(id, is_correct))
+        print(len(has_extra))
+        print(len(is_correct))
+        id_diff = set(has_extra_ids).difference(set(is_correct_ids))
+        to_mov = list(map(jpnm, id_diff))
+        assert len(has_extra) - len(is_correct) == len(to_mov)
 
-        def image(row):
-            image = {}
-            image["height"] = row.im_h
-            image["width"] = row.im_w
-            image["image_id"] = str(row.filename).split(".")[0]
-            image["filename"] = row.filename
-            return image
+        i = 1
+        n_files = len(to_mov)
+        for fil in to_mov:
+            file = os.path.join(dir_has_extra, fil)
+            if os.path.exists(file):
+                shutil.move(file, dst)
+                print("sample", i,'/',n_files, end='  \r')
+                i += 1
+            else: print("no discrepency", end= "  \r")
 
-        def category(row):
-            category = {}
-            # category["supercategory"] = row.supercategory
-            category["id"] = row.categoryid
-            category["name"] = row.names
-            return category
+    @staticmethod
+    def count_objects(lbl_lst_csv):
+        label_list = pd.read_csv(lbl_lst_csv)
+        i = 0
+        for label_file in label_list:
+            df = pd.read_csv(label_file, delimiter=' ', header=None)
+            num_objects = df.shape[0]
+            i += num_objects
+        print(f"num objects in {which_set} is {i}")
 
-        def annotation(row):
-            annotation = {}
-            # area = (row.xmax -row.xmin)*(row.ymax - row.ymin)
-            annotation["segmentation"] = []
-            annotation["iscrowd"] = 0
-            # annotation["area"] = area
-            annotation["image_id"] = str(row.filename).split(".")[0]
-            annotation["bbox"] = [row.x*row.im_w, row.y*row.im_h, row.w*row.im_w, row.h*row.im_h]
-            annotation["category_id"] = row.categoryid
-            annotation["id"] = row.annid
-            annotation["score"] = row.conf
-            return annotation
-
-        for row in data.itertuples():
-            annotations.append(annotation(row))
-
-        imagedf = data.drop_duplicates(subset=['fileid']).sort_values(by='fileid')
-        for row in imagedf.itertuples():
-            images.append(image(row))
-
-        catdf = data.drop_duplicates(subset=['categoryid']).sort_values(by='categoryid')
-        for row in catdf.itertuples():
-            categories.append(category(row))
-
-        data_coco = {}
-        data_coco["images"] = images
-        data_coco["categories"] = categories
-        data_coco["annotations"] = annotations
-        json.dump(data_coco, open(save_json_pth, "w"), indent=4)
+    @staticmethod
+    def im_dims_ratio(img_list):
+        n_2176 = 0
+        n_3000 = 0
+        for i in range(len(img_list)):
+            img_file = img_list[i]
+            imgp = PIL.Image.open(img_file)
+            im_array = np.array(imgp)
+            im_h = im_array.shape[0]
+            if im_h == 3000:
+                n_3000 += 1
+            else:
+                n_2176 += 1
+        return n_2176, n_3000

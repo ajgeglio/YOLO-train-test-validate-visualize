@@ -8,10 +8,8 @@ import numpy as np
 
 
 class Reports:
-    def __init__(self) -> None:
-        self
-
-    def generate_summary(self, pred_csv_path, lbl_csv_path): 
+    @staticmethod
+    def generate_summary(pred_csv_path, lbl_csv_path): 
         ''' 
         Input is the path where a test predict run output is stored. Meaning a label and predict csv was generated.
         These csvs are generated with the Yolo predict loop. 
@@ -38,7 +36,8 @@ class Reports:
         print(f"Total number of fish predicted: {tot_pred:,}, at a min confidence: {df_pred.conf.min():0.2f}")
         return df_pred, df_lbls
 
-    def scores_df(self, df_lbls, df_pred, iou_tp=0.5):
+    @staticmethod
+    def scores_df(df_lbls, df_pred, iou_tp=0.5):
         # https://kharshit.github.io/blog/2019/09/20/evaluation-metrics-for-object-detection-and-segmentation
         n_ground_truth = len(df_lbls)
         df_merge = df_pred.merge(df_lbls, on='Filename', suffixes=('_p', '_l'), how='outer').dropna()
@@ -70,7 +69,8 @@ class Reports:
         assert len(df_pred) == len(scores)
         return scores.reset_index(drop=True)
 
-    def return_fn_df(self, df_lbls, df_pred, iou_tp=0.5, conf_thresh=0.2):
+    @staticmethod
+    def return_fn_df(df_lbls, df_pred, iou_tp=0.5, conf_thresh=0.2):
         # Merge labels and predictions based on Filename and confidence threshold
         df_merge = df_lbls.merge(df_pred[df_pred.conf >= conf_thresh], on='Filename', suffixes=('_l', '_p'), how='left')
         # Calculate pixel distance
@@ -100,7 +100,8 @@ class Reports:
         assert len(df_lbls) == len(fn_df)
         return fn_df.reset_index(drop=True)
     
-    def scores_df_obb(self, df_lbls, df_pred, iou_tp = 0.5):
+    @staticmethod
+    def scores_df_obb(df_lbls, df_pred, iou_tp = 0.5):
         # https://kharshit.github.io/blog/2019/09/20/evaluation-metrics-for-object-detection-and-segmentation
         n_ground_truth = len(df_lbls)
         # df_pred = df_pred[df_pred.conf>=thresh]
@@ -135,7 +136,8 @@ class Reports:
         scores['Recall'] = scores.acc_tp/n_ground_truth
         return scores.reset_index(drop=True)
     
-    def calc_AP(self, scores_df, step):
+    @staticmethod
+    def calc_AP(scores_df, step):
         rec = scores_df.Recall.values
         prec = scores_df.Precision.values
         idx = Utils().evenly_spaced_indices(rec, step)
@@ -148,35 +150,43 @@ class Reports:
             AP = np.sum(prec_interp)/((1/step)+1)
         return rec_, prec_interp, AP
     
-    def coco_mAP(self, df_lbls, df_pred):
+    @staticmethod
+    def calculate_f1(scores_df):
+        # Calculate F1 scores
+        return 2 * (scores_df['Precision'] * scores_df['Recall']) / (scores_df['Precision'] + scores_df['Recall'])
+    
+    @staticmethod
+    def coco_mAP(df_lbls, df_pred):
         iou_list = np.arange(0.5, 1.0, 0.05)
         ap_list = []
         for iou_ in iou_list:
-            scores_df = self.scores_df(df_lbls, df_pred, iou_tp = iou_)
-            _, _, ap = self.calc_AP(scores_df, step=0.01)
+            scores_df = Reports.scores_df(df_lbls, df_pred, iou_tp = iou_)
+            _, _, ap = Reports.calc_AP(scores_df, step=0.01)
             ap_list.append(ap)
         mAP = np.mean(ap_list)
         return iou_list, ap_list, mAP
     
-    def plot_PR(self, scores_df, step='AUC'):
+    @staticmethod
+    def plot_PR(scores_df, step='AUC'):
         # Set the font to Times New Roman
         # label1 = 
         # label2 =
         plt.rcParams['font.family'] = 'Times New Roman'
         plt.rcParams['font.size'] = 12  # Set the font size for better readability
-        rec, prec, AP = self.calc_AP(scores_df, step)
+        rec, prec, AP = Reports.calc_AP(scores_df, step)
         plt.plot(rec, prec, marker='.', label=f"P-R Curve", drawstyle="steps", linewidth=.8, markersize=1)
         plt.xlabel("Recall")
         plt.ylabel("Precision")
         plt.legend()
-        plt.title(f"Precision Recall, AP: {AP:.2f}")
+        plt.title(f"Precision Recall, mAP-50: {AP:.2f}")
         # Improve the layout
         plt.grid(True)
         plt.tight_layout()
         # Show the plot
         plt.show()
         return AP
-  
+
+    @staticmethod
     def plot_epoch_time(df1, df2=pd.DataFrame(),title=None, lbl1=None, lbl2=None):
         tdt = lambda x: datetime.datetime.fromtimestamp(x)
         fig, ax = plt.subplots(1, figsize=(10,5))
@@ -200,7 +210,8 @@ class Reports:
         ax.set_title(title)
         ax.legend()
         fig.tight_layout()
-    
+
+    @staticmethod
     def plot_collect_distribution(df1, df2=pd.DataFrame(),title=None, lbl1=None, lbl2=None, ylabel=None, w=10, h=7):
         fig, ax = plt.subplots(1, figsize=(w,h))
         counts1 = df1.groupby(by='collect_id').count()["filename"]
@@ -214,4 +225,28 @@ class Reports:
         ax.legend()
         ax.set_ylabel(ylabel)
         fig.tight_layout()
-        return  
+        return
+    
+    @staticmethod
+    def get_metrics(curve_path):
+        df = pd.read_csv(curve_path, index_col=0)
+        c = df.iloc[1,0].split()[1:-1]
+        c = [float(num) for num in c]
+        pr = df.iloc[0,1].split()[1:-1]
+        pr = [float(num) for num in pr]
+        f1 = df.iloc[1,1].split()[1:-1]
+        f1 = [float(num) for num in f1]
+        p = df.iloc[2,1].split()[1:-1]
+        p = [float(num) for num in p]
+        r = df.iloc[3,1].split()[1:-1]
+        r = [float(num) for num in r]
+        fmax = np.max(f1)
+        cmax = c[np.argmax(f1)]
+        df = pd.DataFrame(np.c_[c, p, r, f1], columns=["conf", "precision", "recall", "f1"])
+        df['diff'] = abs(df['precision'] - df['recall'])
+        eq = df.loc[df['diff'].idxmin(), ['conf', "recall"]]
+        c_eq = eq.conf
+        pr_eq = eq.recall
+        print(f'The confidence threshold where "precision" and "recall" are the closest is: {c_eq} @ {pr_eq}')
+        print(f'The confidence threshold where "F1" is at its maximum is: {cmax} @ {fmax}')
+        return df, fmax, cmax, c_eq, pr_eq

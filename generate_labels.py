@@ -120,3 +120,151 @@ class GenerateLabels:
                 print(f"generating blanklbl from mask in labels_from_masks {i+1}/{lbl_len}", end='    \r')
                 df = pd.DataFrame()
                 df.to_csv(f"./{save_path}/{str(img_name).split('.')[0]}.txt", sep=' ', header=False, index=False)  
+
+    @staticmethod
+    def make_master_lbl_df_gopro(lbl_path_lst):
+        lbl_lst = []
+        for lbl_file in lbl_path_lst:
+            lbl = pd.read_csv(lbl_file, sep=' ', names=["cls","x","y","w","h"], index_col=None)
+            image_id = os.path.basename(lbl_file).split(".")[0]
+            lbl['Filename'] = image_id
+            lbl['id'] = lbl.index.astype(int)
+            lbl_lst.append(lbl)
+        master_lbl_df = pd.concat(lbl_lst, ignore_index=True)
+        master_lbl_df['fish_id'] = master_lbl_df.Filename.astype(str) +"_"+ master_lbl_df.id.astype(str)
+        master_lbl_df = master_lbl_df[["Filename", "id", "fish_id", "cls","x","y","w","h"]]
+        return master_lbl_df.reset_index(drop=True)
+    
+    @staticmethod
+    def pred_df_to_coco_json(pred_df_pth, save_json_pth):
+        data = pd.read_csv(pred_df_pth, index_col=0)
+        images = []
+        categories = []
+        annotations = []
+
+        # Assign file and category ids
+        data['fileid'] = data['filename'].astype('category').cat.codes
+        data['categoryid'] = pd.Categorical(data['names'], ordered=True).codes
+        data['annid'] = data.index
+
+        # Build images list
+        imagedf = data.drop_duplicates(subset=['fileid']).sort_values(by='fileid')
+        for row in imagedf.itertuples():
+            image = {
+                "height": row.im_h,
+                "width": row.im_w,
+                "image_id": str(row.filename).split(".")[0],
+                "filename": row.filename
+            }
+            images.append(image)
+
+        # Build categories list
+        catdf = data.drop_duplicates(subset=['categoryid']).sort_values(by='categoryid')
+        for row in catdf.itertuples():
+            category = {
+                "id": row.categoryid,
+                "name": row.names,
+                "supercategory": None
+            }
+            categories.append(category)
+
+        # Build annotations list
+        for row in data.itertuples():
+            annotation = {
+                "segmentation": [],
+                "iscrowd": 0,
+                "image_id": str(row.filename).split(".")[0],
+                "bbox": [row.x * row.im_w, row.y * row.im_h, row.w * row.im_w, row.h * row.im_h],
+                "category_id": row.categoryid,
+                "id": row.annid,
+                "score": row.conf
+            }
+            annotations.append(annotation)
+
+        data_coco = {
+            "images": images,
+            "categories": categories,
+            "annotations": annotations
+        }
+        with open(save_json_pth, "w") as f:
+            json.dump(data_coco, f, indent=4)
+
+    @staticmethod
+    def make_master_lbl_df(lbl_path_lst):
+        lbl_lst = []
+        for row in lbl_path_lst:
+            lbl_file= row
+            lbl = pd.read_csv(lbl_file, sep=' ', names=["cls","x","y","w","h"], index_col=None)
+            image_id = os.path.basename(lbl_file).split(".")[0]
+            lbl['Filename'] = image_id
+            lbl['id'] = lbl.index.astype(int)
+            lbl_lst.append(lbl)
+        master_lbl_df = pd.concat(lbl_lst, ignore_index=True)
+        master_lbl_df['fish_id'] = master_lbl_df.Filename.astype(str) +"_"+ master_lbl_df.id.astype(str)
+        master_lbl_df = master_lbl_df[["Filename", "id", "fish_id", "cls","x","y","w","h"]]
+        return master_lbl_df.reset_index(drop=True)
+    
+    @staticmethod
+    def master_lbl_df_to_coco_json(master_lbl_df, save_json_pth):
+        data = master_lbl_df.copy()
+        
+        # COCO requires unique IDs for images and annotations, so we will use new IDs
+        data['image_id'] = data['Filename'].astype('category').cat.codes
+        data['category_id'] = pd.Categorical(data['cls'], ordered=True).codes
+        # Create a unique annotation ID across the entire dataset
+        data['annotation_id'] = data.index
+
+        # Build images list
+        imagedf = data.drop_duplicates(subset=['image_id']).sort_values(by='image_id')
+        images = [
+            {
+                "id": row.image_id,
+                "width": row.imw,
+                "height": row.imh,
+                "file_name": row.Filename + ".png"
+            }
+            for row in imagedf.itertuples()
+        ]
+
+        # Build categories list
+        catdf = data.drop_duplicates(subset=['category_id']).sort_values(by='category_id')
+        categories = [
+            {
+                "id": row.category_id,
+                "name": str(row.cls),
+                "supercategory": None
+            }
+            for row in catdf.itertuples()
+        ]
+
+        # Build annotations list
+        annotations = []
+        for row in data.itertuples():
+            # Convert YOLO format (normalized center-x, center-y, w, h) to COCO format (top-left x, y, w, h)
+            abs_x = (row.x - row.w / 2) * row.imw
+            abs_y = (row.y - row.h / 2) * row.imh
+            abs_w = row.w * row.imw
+            abs_h = row.h * row.imh
+
+            annotation = {
+                "id": row.annotation_id,
+                "image_id": row.image_id,
+                "category_id": row.category_id,
+                "bbox": [abs_x, abs_y, abs_w, abs_h],
+                "area": abs_w * abs_h,  # Area of the bounding box
+                "iscrowd": 0,
+                "segmentation": []
+            }
+            annotations.append(annotation)
+
+        data_coco = {
+            "images": images,
+            "categories": categories,
+            "annotations": annotations
+        }
+        
+        try:
+            with open(save_json_pth, "w") as f:
+                json.dump(data_coco, f, indent=4)
+        except Exception as e:
+            print(f"Error saving COCO JSON: {e}")

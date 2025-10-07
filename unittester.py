@@ -1,7 +1,10 @@
 import unittest
 from unittest.mock import patch, mock_open, MagicMock
-from src import reports, predicting
+import sys
 import os, glob
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+from reports import Reports
+from predicting import PredictOutput
 import datetime
 import torch, argparse  # Import necessary modules from your script
 from ultralytics import YOLO
@@ -65,7 +68,7 @@ class TestYOLOInference(unittest.TestCase):
         expected_list = ['test_image1.jpg', 'test_image2.jpg']
         self.assertEqual(img_list, expected_list)
 
-    @patch('src.predicting.YOLO_predict_w_outut')
+    @patch('predicting.PredictOutput.YOLO_predict_w_outut')
     @patch('ultralytics.YOLO')
     def test_yolo_model(self, mock_yolo, mock_predict):
         model = mock_yolo.return_value
@@ -76,7 +79,7 @@ class TestYOLOInference(unittest.TestCase):
         results = model(imgs, stream=True, half=True, iou=0.6, conf=0.01, imgsz=2048, classes=[0])
         
         for r, lbl, img_path in zip(results, lbls, imgs):
-            predicting.YOLO_predict_w_outut(r, lbl, img_path, "predictions.csv", "labels.csv", None, False, True)
+            PredictOutput.YOLO_predict_w_outut(r, lbl, img_path, "predictions.csv", "labels.csv", None, False, True)
         
         self.assertTrue(mock_predict.called)
 

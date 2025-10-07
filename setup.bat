@@ -28,7 +28,7 @@ REM Upgrade pip
 python -m pip install --upgrade pip
 
 REM Install required dependencies
-python -m pip install ultralytics shapely
+python -m pip install -U ultralytics shapely sahi
 python -m pip uninstall -y torch torchvision
 python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 

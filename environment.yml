@@ -14,3 +14,4 @@ dependencies:
   - openpyxl
   - ipykernel
   - shapely
+  - sahi

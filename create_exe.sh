@@ -1,17 +1,32 @@
-# ultralytics
-# shapely
+#!/bin/bash
 
-# Note: Ensure the correct PyTorch version with CUDA support is installed.
-# Use the following command to install PyTorch with CUDA 11.8 support:
-# pip uninstall torch torchvision
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# Cross-platform path separator
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+    SEP=";"
+else
+    SEP=":"
+fi
 
-pyinstaller --onefile --noconsole --icon=icon.png \
-    --add-data "GobyFinder/predict.py;." \
-    --add-data "GobyFinder/src.py;." \
-    --add-data "GobyFinder/unittester.py;." \
-    --add-data "C:\Users\ageglio\AppData\Local\Programs\Python\Python313\tcl\tcl8.6;lib\tcl8.6" \
-    --add-data "C:\Users\ageglio\AppData\Local\Programs\Python\Python313\tcl\tk8.6;lib\tk8.6" \
-    --add-data "C:\Users\ageglio\ageglio-1\gobyfinder_yolov8\scripts\GobyFinderEnv\Lib\site-packages\certifi\cacert.pem;certifi" \
-    GobyFinder/GobyFinder_gui.py
+# Optional: Clean previous builds
+echo "Cleaning previous builds..."
+rm -rf build dist *.spec
 
+# Build command
+echo "Building executable with PyInstaller..."
+pyinstaller --onefile --noconsole --icon=assets/icon.png \
+    --add-data="scripts/batchpredict.py${SEP}scripts" \
+    --add-data="scripts/unittester.py${SEP}src" \
+    --add-data="src/utils.py${SEP}src" \
+    --add-data="src/predicting.py${SEP}src" \
+    --add-data="src/reports.py${SEP}src" \
+    --add-data="src/iou.py${SEP}src" \
+    --add-data="certifi/cacert.pem:certifi" \
+    scripts/GobyFinderGui.py
+
+# Check result
+if [[ $? -eq 0 ]]; then
+    echo "✅ Build successful! Executable is in the 'dist' folder."
+else
+    echo "❌ Build failed. Check the output above for errors."
+    exit 1
+fi

@@ -53,7 +53,7 @@ def install_dependencies():
 
     # Install ultralytics and shapely
     run_subprocess(
-        [venv_python, "-m", "pip", "install", "ultralytics", "shapely"],
+        [venv_python, "-m", "pip", "install", "-U", "ultralytics", "shapely", "sahi"],
         "Installing ultralytics and shapely"
     )
 

@@ -10,18 +10,34 @@ In Progress
 
 # Python Scripts
 
-## GobyFinder_gui.py
-This Python file provides a GUI for running inference, testing, and CUDA checks. It uses Tkinter for the interface and allows users to configure parameters for YOLO inference.
+**runResults.py:** acts as a wrapper or launcher for the pipeline, orchestrating the execution of the other two scripts:
+This script is intended to be run by the user. It parses command-line arguments (using argparse) and then constructs a command to call batchPredict+results.py as a subprocess, passing along all relevant arguments. It does not itself perform prediction or results processing, but delegates these tasks.
 
-    Features:
-    ----------
-        - Browse for image directories and weights files.
-        - Configure inference parameters such as batch size, confidence threshold, and image size.
-        - Run inference, test YOLO, and check CUDA availability.
-        - Real-time console output and logging.
+**batchPredict+results.py:**
+This script is called by runResults.py. It also parses arguments, then:
+
+Calls **batchpredict.py** (again as a subprocess) to perform the actual YOLO inference and prediction, saving results to CSV.
+After predictions are complete, it processes the results (using the YOLOResults class) to generate final output tables, such as summary CSVs.
+
+**batchpredict.py**:
+This script is called by batchPredict+results.py. It performs the core YOLO inference and prediction, saving the raw predictions (and optionally label comparisons) to CSV files.
+
+**Why this structure?**  
+- Each script has a focused responsibility:
+  - `runResults.py`: User interface and pipeline launcher.
+  - `batchPredict+results.py`: Pipeline manager, chaining prediction and results processing.
+  - `batchpredict.py`: Core prediction logic.
+- Modular and flexible: Each stage can be run independently.
+- Arguments are parsed at each stage for flexible configuration.
+
+**Summary:**  
+`runResults.py` → `batchPredict+results.py` → `batchpredict.py`  
+Each script passes arguments and results to the next stage.
 
 ## batchpredict.py
 Batch inference script for YOLOv8. Processes images in batches, saves predictions and labels to CSV, and supports overlays and cage label output.
+
+**Now supports [SAHI](https://github.com/obss/sahi) tiled inference for large images.**
 
     Parameters:
     ----------
@@ -36,11 +52,20 @@ Batch inference script for YOLOv8. Processes images in batches, saves prediction
         --has_cages: If provided, calculates fish intersection with quadrats.
         --plot: Save overlay images.
         --verify: Verify images before processing.
+        --sahi_tiled: Enable SAHI tiled inference (for large images).
+        --tile_size: Tile size for SAHI tiled inference (default: 1024).
+        --tile_overlap: Tile overlap ratio for SAHI tiled inference (default: 0.2).
 
     Returns:
     -------
         - CSV files with predictions, labels, and scores.
         - Overlay images if requested.
+
+    Notes:
+    ------
+    - When `--sahi_tiled` is enabled, images are processed in overlapping tiles using SAHI, which can improve detection on large images.
+    - Tile size and overlap can be controlled with `--tile_size` and `--tile_overlap`.
+    - All other features (labels, overlays, cages) are supported with SAHI as well.
 
 ## batchpredict+results.py
 Runs batch prediction and then processes results, merging YOLO outputs with metadata and other tables.
@@ -51,10 +76,10 @@ Runs batch prediction and then processes results, merging YOLO outputs with meta
         --weights: Path to YOLO model weights.
         --output_name: Output folder name.
         --batch_size: Number of images per batch.
-        --confidence: Minimum confidence threshold.
+        --confidence: Minimum confidence threshold that is run during inference (can be filtered later).
         --metadata: Path to image metadata CSV.
         --op_table: Path to operations database table.
-        --results_confidence: Confidence threshold for results output.
+        --results_confidence: Confidence threshold for results output table.
         --has_labels: If provided, compares predictions to ground truth labels.
         --plot: Save overlay images.
 
@@ -63,7 +88,7 @@ Runs batch prediction and then processes results, merging YOLO outputs with meta
         - CSV file with merged YOLO results and metadata.
 
 ## predict+overlay.py
-Minimal script for applying YOLO weights to a small dataset and generating overlays. If labels are provided, overlays are color-coded for true/false positives.
+Minimal script for applying YOLO weights to a single batch of data and generating overlays. If labels are provided, overlays are color-coded for true/false positives.
 
     Parameters:
     ----------
@@ -139,6 +164,16 @@ This Python file validates a YOLOv8 model on a dataset with existing labels. It 
         - Validation metrics (precision, recall, mAP).
         - CSV files with validation results and curves.
 
+## GobyFinder_gui.py
+This Python file provides a GUI for running inference, testing, and CUDA checks. It uses Tkinter for the interface and allows users to configure parameters for YOLO inference.
+
+    Features:
+    ----------
+        - Browse for image directories and weights files.
+        - Configure inference parameters such as batch size, confidence threshold, and image size.
+        - Run inference, test YOLO, and check CUDA availability.
+        - Real-time console output and logging.
+
 # Source code and helper functions
 
 ## src/utils.py
@@ -208,7 +243,7 @@ These helper modules are used throughout the codebase to streamline data handlin
         conda create --name Yolov8  
         conda activate Yolov8  
         conda install pytorch torchvision torchaudio pytorch-cuda=11.8 pillow pip -c pytorch -c nvidia -c conda-forge  
-        pip install ultralytics requests==2.27.1  
+        pip install -U ultralytics requests==2.27.1 sahi 
 
 ### 1C. Install with setup.bat (windows only)
 double click setup/setup.bat
@@ -219,7 +254,7 @@ python setup/setup.py
 ### 1D. Manual Install with PIP (If you are unable to complete step 1)
 Install requirements.txt with pip (pip install -r requirements.txt)
         
-        pip install ultralytics shapely
+        pip install -U ultralytics sahi shapely
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 
@@ -243,4 +278,13 @@ Install requirements.txt with pip (pip install -r requirements.txt)
   url = {https://github.com/ultralytics/ultralytics},
   orcid = {0000-0001-5950-6979, 0000-0002-7603-6750, 0000-0003-3783-7069},
   license = {AGPL-3.0}
+}
+
+@article{akyon2022sahi,
+  title={Slicing Aided Hyper Inference and Fine-tuning for Small Object Detection},
+  author={Akyon, Fatih Cagatay and Altinuc, Sinan Onur and Temizel, Alptekin},
+  journal={2022 IEEE International Conference on Image Processing (ICIP)},
+  doi={10.1109/ICIP46576.2022.9897990},
+  pages={966-970},
+  year={2022}
 }

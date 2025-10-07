@@ -11,6 +11,33 @@ from timeit import default_timer as stopwatch
 import glob
 import pandas as pd
 import argparse
+# Add SAHI imports
+from sahi import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
+from sahi.utils.cv import read_image_as_pil
+
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Yolov8 inference, prediction and scoring for goby detection")
+    parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
+    parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
+    parser.add_argument('--img_directory', default=None, help='Directory of Images')
+    parser.add_argument('--img_list_csv', default=None, help='Path to csv list of image paths')
+    parser.add_argument('--lbl_list_csv', default=None, help='Path to csv list of label paths')
+    parser.add_argument('--weights', default=r"path\to\weights.pt", help='Trained weights path')
+    parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
+    parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
+    parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
+    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
+    parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
+    parser.add_argument('--img_size', default=2048, type=int, help='Max image dimension')
+    parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
+    parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
+    parser.add_argument('--verify', action="store_true", help='Verify image before processing')
+    parser.add_argument('--sahi_tiled', action="store_true", help='Enable SAHI tiled inference')
+    parser.add_argument('--tile_size', default=1024, type=int, help='Tile size for SAHI tiled inference')
+    parser.add_argument('--tile_overlap', default=0.2, type=float, help='Tile overlap ratio for SAHI tiled inference')
+    return parser.parse_args()
 
 def setup_environment():
     """Ensure the bundled certificates are used."""
@@ -63,25 +90,6 @@ def save_labels_to_csv(df, csv_path):
     df['ground_truth_id'] = df['Filename'] + "_" + df.index.astype('str')
     df.to_csv(csv_path, header=True)
 
-def parse_arguments():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Yolov8 inference, prediction and scoring for goby detection")
-    parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
-    parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
-    parser.add_argument('--img_directory', default=None, help='Directory of Images')
-    parser.add_argument('--img_list_csv', default=None, help='Path to csv list of image paths')
-    parser.add_argument('--lbl_list_csv', default=None, help='Path to csv list of label paths')
-    parser.add_argument('--weights', default=r"src\models\GobyFinderAUV.pt", help='Weights path')
-    parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
-    parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
-    parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
-    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
-    parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
-    parser.add_argument('--img_size', default=2048, type=int, help='Max image dimension')
-    parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
-    parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
-    parser.add_argument('--verify', action="store_true", help='Verify image before processing')
-    return parser.parse_args()
 
 def main():
     setup_environment()
@@ -113,7 +121,6 @@ def main():
         image_list = Utils.verify_images(image_list)
 
     # Initialize YOLO model
-    model = YOLO(args.weights)
     batch_size = args.batch_size
     start_batch = args.start_batch
 
@@ -138,23 +145,52 @@ def main():
         imgs = image_list[s:e]
         lbls = label_list[s:e] if args.has_labels else None
 
-        results = model(
-            imgs,
-            stream=True,
-            half=True,
-            iou=args.iou,
-            conf=args.confidence,
-            imgsz=args.img_size,
-            classes=[0]
-        )
-        for r, img_path in zip(results, imgs):
-            lbl = lbls.pop(0) if lbls else None
-            PredictOutput.YOLO_predict_w_outut(
-                r, lbl, img_path, pred_csv_path,
-                lbl_csv_path if args.has_labels else None,
-                plots_folder, args.plot, args.has_labels
+        if args.sahi_tiled:
+            model = AutoDetectionModel.from_pretrained(
+                model_type='ultralytics',
+                model_path=args.weights, # any yolov8/yolov9/yolo11/yolo12/rt-detr det model is supported
+                confidence_threshold=args.confidence,
+                device="cuda:0", # or 'cpu' if GPU is not available
             )
-
+            for img_path in imgs:
+                image = read_image_as_pil(img_path)
+                result = get_sliced_prediction(
+                    image,
+                    model,
+                    slice_height=args.tile_size,
+                    slice_width=args.tile_size,
+                    overlap_height_ratio=args.tile_overlap,
+                    overlap_width_ratio=args.tile_overlap,
+                    postprocess_type="NMS",
+                    verbose=True,
+                )
+                lbl = lbls.pop(0) if lbls else None
+                # Convert SAHI result to YOLO format for PredictOutput
+                yolo_result = result.to_coco_annotations()
+                # You may need to adapt PredictOutput.YOLO_predict_w_outut to accept this format
+                PredictOutput.YOLO_predict_w_outut_sahi(
+                    yolo_result, lbl, img_path, pred_csv_path,
+                    lbl_csv_path if args.has_labels else None,
+                    plots_folder, args.plot, args.has_labels
+                )
+        else:
+            model = YOLO(args.weights)
+            results = model(
+                imgs,
+                stream=True,
+                half=True,
+                iou=args.iou,
+                conf=args.confidence,
+                imgsz=args.img_size,
+                classes=[0]
+            )
+            for r, img_path in zip(results, imgs):
+                lbl = lbls.pop(0) if lbls else None
+                PredictOutput.YOLO_predict_w_outut(
+                    r, lbl, img_path, pred_csv_path,
+                    lbl_csv_path if args.has_labels else None,
+                    plots_folder, args.plot, args.has_labels
+                )
     # Finalize predictions and labels
     pred = pd.read_csv(pred_csv_path, index_col=0)
     lbl = pd.read_csv(lbl_csv_path, index_col=0) if args.has_labels else None
@@ -178,3 +214,4 @@ if __name__ == '__main__':
     # python scripts/predict.py --img_directory path/to/images --weights path/to/model.pt --output_name my_output --batch_size 8 --confidence 0.3 --has_labels 
     # python scripts/predict.py --img_list_csv path/to/labels.csv --lbl_list_csv path/to/labels.csv --weights path/to/model.pt --output_name my_output --batch_size 8 --confidence 0.3 --has_labels 
     main()
+

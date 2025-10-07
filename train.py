@@ -1,11 +1,24 @@
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+import argparse
+import time
+from timeit import default_timer as stopwatch
 from ultralytics import YOLO, checks
 import torch
-from timeit import default_timer as stopwatch
-import time
-import argparse
+
+# --- Logger class to tee output to both file and terminal ---
+class Logger(object):
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
 
 def parse_arguments():
     """Parse command-line arguments."""
@@ -30,44 +43,51 @@ def setup_environment():
 def display_cuda_info():
     """Display CUDA device information."""
     device_count = torch.cuda.device_count()
-    for d in range(device_count):
-        print(torch.cuda.get_device_name(d))
+    if device_count > 0:
+        for d in range(device_count):
+            print(f"Device {d}: {torch.cuda.get_device_name(d)}")
+    else:
+        print("No CUDA devices found. Using CPU.")
     print("Number of devices:", device_count)
 
-def setup_logging(training_run_folder, name_time):
-    """Set up logging to a file."""
-    log_file_path = os.path.join(training_run_folder, f"{name_time}_yolo_training.log")
-    sys.stdout = open(log_file_path, 'w')
-    return log_file_path
-
 def main():
-    setup_environment()
-    args = parse_arguments()
-    torch.cuda.empty_cache()
-    checks()
-    # Display CUDA information
-    display_cuda_info()
-
-    # Initialize variables
-    print(args.note)
     start_time = stopwatch()
-    torch.cuda.empty_cache()
-    name_time = time.strftime("%Y%m%d%H%M", time.localtime())
+    
+    # --- 1. Setup paths and parse arguments early ---
+    args = parse_arguments()
+    name_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     training_run_folder = os.path.join("output", "training", args.output_name)
     os.makedirs(training_run_folder, exist_ok=True)
+    log_file_path = os.path.join(training_run_folder, f"{name_time}_yolo_training.log")
 
-    # Set up logging
-    log_file_path = setup_logging(training_run_folder, name_time)
-    print(f"Logging to: {log_file_path}")
-    print(args.note)
-    print(name_time)
+    # --- 2. Set up logging to capture all subsequent output ---
+    sys.stdout = Logger(log_file_path)
+
+    print("--- Training Run Started ---")
+    print(f"Log file created at: {log_file_path}")
+    print(f"Start time: {time.ctime()}")
+
+    # --- 3. Log all input arguments ---
+    print("\n--- Input Arguments ---")
+    for arg, value in vars(args).items():
+        print(f"  {arg}: {value}")
+    print("---------------------\n")
+
+    # --- 4. Begin core script logic ---
+    setup_environment()
+    torch.cuda.empty_cache()
+    checks()
+    display_cuda_info()
+    print(f"Note: {args.note}\n")
 
     # Load the YOLO model
     model = YOLO(args.weights)
 
     # Train the model
+    print("Starting YOLOv8 training...")
     model.train(
         data=args.data_yml,
+        # compile=True,
         resume=args.resume,
         pretrained=True,
         epochs=args.epochs,
@@ -87,7 +107,8 @@ def main():
     )
 
     # Print total training time
-    print(f"Total training time: {stopwatch() - start_time:.2f} seconds")
+    print(f"\nTotal execution time: {stopwatch() - start_time:.2f} seconds")
+    print("--- Training Run Complete ---")
 
 if __name__ == '__main__':
     main()

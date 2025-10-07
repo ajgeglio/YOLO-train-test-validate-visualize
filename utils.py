@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import PIL.Image
 from pathlib import Path
+from tqdm import tqdm
 import sys
 import json
 import zipfile
@@ -42,6 +43,20 @@ class ReturnTime:
         dt = cls.get_time_obj(time_s)
         return dt.strftime('%H:%M:%S') if isinstance(dt, datetime.datetime) else np.nan
 
+# --- Logger class to tee output to both file and terminal ---
+class Logger(object):
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
 class Utils:
 
     @staticmethod
@@ -58,15 +73,47 @@ class Utils:
         return matched_files
 
     @staticmethod
-    def verify_images(images):
-        """Verify images to ensure they are not corrupted."""
-        for img_path in images:
+    def verify_images_corrected(images):
+        """
+        Verifies images and returns a new list containing only the non-corrupt paths.
+        
+        Args:
+            images (list): A list of image file paths (strings).
+            
+        Returns:
+            list: A new list of valid image file paths.
+        """
+        valid_images = []
+        
+        # Use enumerate to track position and len to print progress
+        total_images = len(images)
+        print(f"Starting image verification for {total_images} images...")
+
+        for i, img_path in enumerate(images):
             try:
-                PIL.Image.open(img_path).verify()
-            except:
-                images.remove(img_path)
-                print(f"Removing {img_path} from list because it is not compatible")
-        return
+                # 1. Open the image file
+                img = PIL.Image.open(img_path)
+                # 2. Verify the image integrity without fully loading it
+                img.verify()
+                # 3. Re-open and load the image content fully to catch deferred errors
+                img = PIL.Image.open(img_path)
+                img.load()
+                
+                # If both steps succeed, the path is added to the valid list
+                valid_images.append(img_path)
+
+            except Exception as e:
+                # Print the path of the corrupt file and the error
+                print(f"❌ Removing corrupt image: {img_path}. Error: {e}")
+            
+            # Optional: Print progress every 100 images
+            if (i + 1) % 100 == 0 or (i + 1) == total_images:
+                print(f"Processed {i + 1}/{total_images} images.")
+
+        corrupt_count = total_images - len(valid_images)
+        print(f"\nVerification complete. Removed {corrupt_count} corrupt images.")
+        corrupt_images = [img for img in images if img not in valid_images]
+        return valid_images, corrupt_images
     
     @staticmethod
     def initialize_logging(path, output_name, suppress_log):
@@ -80,9 +127,14 @@ class Utils:
         return sys.stdout
     
     @staticmethod
-    def write_list_txt(filename, lst):
+    def write_list_txt(lst, filename):
         with open(filename, "w") as f:
             f.writelines("%s\n" % l for l in lst)
+
+    @staticmethod
+    def read_list_txt(filename):
+        with open(filename, "r") as f:
+            return [line.strip() for line in f if line.strip()]
 
     @staticmethod
     def make_imgs_nms_unique(img_pth_lst):
@@ -235,6 +287,34 @@ class Utils:
             else: continue
     
     @staticmethod
+    def MOVE_files_lst(pth_lst, dest, overwrite=True):
+        if not os.path.exists(dest):
+            os.makedirs(dest)
+        n_files = len(pth_lst)
+        for i, pth in enumerate(pth_lst):
+            i += 1
+            if pth == pth:
+                if overwrite == True:
+                    nm = os.path.basename(pth)
+                    new_pth = os.path.join(dest, nm)
+                    print("sample", i,'/',n_files, end='  \r')
+                    shutil.move(pth, new_pth)
+                elif overwrite == False:
+                    org_sz = os.path.getsize(pth)
+                    nm = os.path.basename(pth)
+                    new_pth = os.path.join(dest, nm)
+                    if not os.path.exists(new_pth):
+                        print("sample", i,'/',n_files, end='  \r')
+                        shutil.move(pth, new_pth)
+                    else:
+                        exist_size = os.path.getsize(new_pth)
+                        if org_sz != exist_size:
+                            print("sample", i,'/',n_files, end='  \r')
+                            shutil.move(pth, new_pth)
+                        else: continue #the exact file name and size already exists
+            else: continue
+
+    @staticmethod
     def copy_and_replace_directory(src, dst):
         n_dir = len(os.listdir(dst))
         print("dst dir has", n_dir, "files")
@@ -358,7 +438,7 @@ class Utils:
             df = pd.read_csv(label_file, delimiter=' ', header=None)
             num_objects = df.shape[0]
             i += num_objects
-        print(f"num objects in {which_set} is {i}")
+        print(f"num objects in {lbl_lst_csv} is {i}")
 
     @staticmethod
     def im_dims_ratio(img_list):
@@ -374,3 +454,170 @@ class Utils:
             else:
                 n_2176 += 1
         return n_2176, n_3000
+    
+    def darwin_to_YOLO(filepath):
+        ''' Convert Darwin JSON annotation to YOLO format text file'''
+        dirname = os.path.dirname(filepath)
+        filename = os.path.basename(filepath).split(".")[0]
+        print(f"Converting {filename} from Darwin to YOLO format", end=" \r")
+        # Load the JSON file
+        with open(filepath, "r") as f:
+            data = json.load(f)
+
+        # Get image dimensions
+        slot = data["item"]["slots"][0]
+        img_width = slot["width"]
+        img_height = slot["height"]
+        name_dict = {"fish":2, "0":0, "1":1, "2":2}  # Example mapping of class names to IDs
+        # Convert annotations to YOLO format
+        yolo_lines = []
+        for ann in data["annotations"]:
+            name = ann["slot_names"][0]
+            name = name_dict[name] if name in name_dict else 0
+            bbox = ann["bounding_box"]
+            w = bbox["w"] / img_width
+            h = bbox["h"]/ img_height
+            x_center = bbox["x"] / img_width + w/2 
+            y_center = bbox["y"] / img_height + h/2
+            yolo_lines.append(f"{name} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}")
+
+        # Save to YOLO-style text file
+        with open(f"{os.path.join(dirname,filename)}.txt", "w") as f:
+            f.write("\n".join(yolo_lines))
+
+    @staticmethod
+    def match_images_to_labels(image_paths, label_paths):
+        """
+        Match image paths to label paths by basename (without extension).
+        
+        Args:
+            image_paths (list): List of full image file paths.
+            label_paths (list): List of full label file paths.
+
+        Returns:
+            matched_images (list): Image paths that have a corresponding label.
+            matched_labels (list): Corresponding label paths.
+        """
+        # Create a set of label basenames (without extension)
+        label_basenames = {os.path.splitext(os.path.basename(lbl))[0] for lbl in label_paths}
+
+        matched_images = []
+        matched_labels = []
+
+        for img_path in image_paths:
+            base_name = os.path.splitext(os.path.basename(img_path))[0]
+            if base_name in label_basenames:
+                matched_images.append(img_path)
+                # Find the matching label path
+                label_path = next(lbl for lbl in label_paths if os.path.splitext(os.path.basename(lbl))[0] == base_name)
+                matched_labels.append(label_path)
+
+        return matched_images, matched_labels
+    
+   
+    @staticmethod
+    def export_paths(image_paths, label_paths, dataset_folder, subfolder):
+        ''' Helper function to export image and label paths ensuring they are matched by basename. '''
+        matched_images, matched_labels = Utils.match_images_to_labels(image_paths, label_paths)
+        out_folder = os.path.join(dataset_folder, subfolder)
+        os.makedirs(out_folder, exist_ok=True)
+        Utils.write_list_txt(matched_images, os.path.join(out_folder, "images.txt"))
+        Utils.write_list_txt(matched_labels, os.path.join(out_folder, "labels.txt"))
+
+    @staticmethod
+    def list_tiled_set(set_image_names, all_tiled_image_paths, all_tiled_label_paths):
+        """
+        Creates a test set of images that correspond to the image names input.
+
+        Args:
+            original_test_image_paths (list): List of image paths from the original test set.
+            all_tiled_image_paths (list): List of all image paths from the entire tiled set.
+            all_tiled_label_paths (list): List of all label paths from the entire tiled set.
+
+        Returns:
+            tuple: A tuple containing lists of matched tiled image paths and label paths.
+        """
+        
+
+        tiled_set_images = []
+        tiled_set_labels = []
+
+        # Step 2: Iterate through all tiled paths and match them to the original basenames
+        # This is the core matching step. We iterate through the tiled set once.
+        for img_path, lbl_path in zip(all_tiled_image_paths, all_tiled_label_paths):
+            # Extract the basename from the tiled image path.
+            tiled_basename = os.path.basename(img_path).rsplit('_', 2)[0]
+            
+            # Check if this basename exists in our set of original basenames.
+            if tiled_basename in set_image_names:
+                tiled_set_images.append(img_path)
+                tiled_set_labels.append(lbl_path)
+        
+        return tiled_set_images, tiled_set_labels
+    
+    @staticmethod
+    def list_full_set(set_image_names, all_image_paths, all_label_paths):
+        """
+        Creates a test set of images that correspond to the image names input.
+
+        Args:
+            original_test_image_paths (list): List of image paths from the original test set.
+            all_tiled_image_paths (list): List of all image paths from the entire tiled set.
+            all_tiled_label_paths (list): List of all label paths from the entire tiled set.
+
+        Returns:
+            tuple: A tuple containing lists of matched tiled image paths and label paths.
+        """
+        
+        set_images = []
+        set_labels = []
+
+        # Step 2: Iterate through all tiled paths and match them to the original basenames
+        # This is the core matching step. We iterate through the tiled set once.
+        for img_path, lbl_path in zip(all_image_paths, all_label_paths):
+            # Extract the basename from the tiled image path.
+            basename = os.path.basename(img_path).split(".")[0]
+            
+            # Check if this basename exists in our set of original basenames.
+            if basename in set_image_names:
+                set_images.append(img_path)
+                set_labels.append(lbl_path)
+        
+        return set_images, set_labels
+    
+
+    @staticmethod
+    def convert_png_to_highest_quality_jpeg(png_path, jpg_path):
+        """
+        Converts a single PNG image to a JPEG with the highest quality settings.
+        Prints only on failure.
+        """
+        try:
+            # 1. Open the image
+            img = PIL.Image.open(png_path)
+            
+            # 2. Convert to RGB to discard the alpha channel (necessary for JPEG)
+            if img.mode in ('RGBA', 'P'):
+                # Create a white background for the image to blend onto
+                background = PIL.Image.new('RGB', img.size, (255, 255, 255))
+                # Paste the PNG onto the background (the alpha channel is used here)
+                background.paste(img, mask=img.split()[3])
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+                
+            # 3. Save as JPEG with the highest quality and disabled subsampling
+            img.save(
+                jpg_path, 
+                'JPEG', 
+                quality=95, 
+                subsampling=0
+            )
+            
+            # Success: RETURN silently, do NOT print.
+            return True
+            
+        except Exception as e:
+            # Failure: PRINT the image name and error
+            tqdm.write(f"❌ Failed to convert {os.path.basename(png_path)}: {e}")
+            return False

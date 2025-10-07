@@ -38,35 +38,62 @@ class Reports:
 
     @staticmethod
     def scores_df(df_lbls, df_pred, iou_tp=0.5):
-        # https://kharshit.github.io/blog/2019/09/20/evaluation-metrics-for-object-detection-and-segmentation
         n_ground_truth = len(df_lbls)
-        df_merge = df_pred.merge(df_lbls, on='Filename', suffixes=('_p', '_l'), how='outer').dropna()
-        # Calculate pixel distance
-        df_merge[['x_l', 'x_p', 'imw', 'y_l', 'y_p', 'imh']] = df_merge[['x_l', 'x_p', 'imw', 'y_l', 'y_p', 'imh']].apply(pd.to_numeric, errors='coerce')
-        df_merge['dist'] = np.sqrt(((df_merge.x_l - df_merge.x_p) * df_merge.imw) ** 2 + ((df_merge.y_l - df_merge.y_p) * df_merge.imh) ** 2)
-        # Calculate IoU
-        df_merge['iou'] = df_merge.apply(lambda row: CalculateIou().get_iou(row), axis=1)
-        # Drop duplicates, keeping the best IoU detect
+
+        # 1. Use a LEFT merge to preserve ALL predictions (df_pred)
+        # Unmatched predictions will have NaN values for label-related columns.
+        df_merge = df_pred.merge(df_lbls, on='Filename', suffixes=('_p', '_l'), how='left')
+
+        # Convert columns to numeric *before* calculation
+        # Use errors='ignore' so NaN values from unmatched predictions don't break the column type
+        cols_to_convert = ['x_l', 'x_p', 'imw', 'y_l', 'y_p', 'imh']
+        for col in cols_to_convert:
+             df_merge[col] = pd.to_numeric(df_merge[col], errors='coerce')
+
+        # 2. Calculate IoU for ALL matched pairs. Unmatched predictions will get NaN IoU.
+        df_merge['iou'] = df_merge.apply(lambda row: CalculateIou().get_iou(row) if not pd.isnull(row['x_l']) else 0, axis=1)
+        # For completely unmatched predictions (NaN label columns), IoU should be 0.
+        # This is not strictly needed if the next step handles it, but makes the column cleaner.
+
+        # 3. Best Match for Each Prediction (including unmatched ones)
+        # Drop duplicates, keeping the best IoU detect. 
+        # For unmatched predictions, the iou is 0 (or NaN), but the detect_id is unique, so they are preserved.
         df_merge = df_merge.sort_values(by='iou', ascending=False).drop_duplicates(subset=['detect_id'], keep='first')
-        # Sort by confidence
-        scores = df_merge.sort_values(by='conf', ascending=False)
+        
+        # 4. Sort by confidence to form the 'scores' base
+        scores = df_merge.sort_values(by='conf', ascending=False).copy()
+        
+        # At this point, len(scores) should equal len(df_pred). We can now assert.
+        assert len(df_pred) == len(scores), "Assertion failed: length of scores does not equal length of predictions"
+
+        # The subsequent logic needs to correctly handle the case where a prediction's best IoU is 0 (or was NaN/null).
+        
+        # 5. Resolve many-to-one (GT-to-Prediction) for TP assignment
+        # For unmatched predictions (IoU=0), 'ground_truth_id' is NaN, which needs to be handled
+        
+        # Filter for actual matches where a ground truth ID exists and IoU > 0
+        actual_matches = scores.dropna(subset=['ground_truth_id']).copy()
+
         # Group by ground truth and detect IDs, keeping the highest IoU
-        max_iou = scores.groupby(["ground_truth_id", "detect_id"], as_index=False).iou.max()
+        max_iou = actual_matches.groupby(["ground_truth_id", "detect_id"], as_index=False).iou.max()
         max_iou = max_iou.sort_values(by='iou', ascending=False).drop_duplicates(subset='ground_truth_id', keep='first')
+
         # Identify true positives
         tp_id = max_iou[max_iou.iou >= iou_tp]
-        tp_idx = scores[scores.detect_id.isin(tp_id.detect_id)].index
+        
+        # 6. Assign TP/FP to the full 'scores' list
         scores['tp'] = 0
-        scores.loc[tp_idx, 'tp'] = 1
-        # Identify false positives
+        scores.loc[scores.detect_id.isin(tp_id.detect_id), 'tp'] = 1
+
+        # False positives are *all* predictions not marked as TP.
         scores['fp'] = np.where(scores.tp == 1, 0, 1)
-        # Calculate cumulative sums for true positives and false positives
+
+        # ... (rest of your logic for PR curve calculation)
         scores['acc_tp'] = scores.tp.cumsum()
         scores['acc_fp'] = scores.fp.cumsum()
-        # Calculate precision and recall
         scores['Precision'] = scores.acc_tp / (scores.acc_tp + scores.acc_fp)
         scores['Recall'] = scores.acc_tp / n_ground_truth
-        assert len(df_pred) == len(scores)
+        
         return scores.reset_index(drop=True)
 
     @staticmethod

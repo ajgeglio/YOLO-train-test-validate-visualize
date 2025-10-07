@@ -8,7 +8,8 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-
+from ultralytics.data.annotator import auto_annotate
+import glob
 
 class Overlays:
     @staticmethod
@@ -134,53 +135,6 @@ class Overlays:
             img.save(os.path.join(save_path,f"{img_id}_a.jpg")) 
         else: print("no fish enumerated or dectected")
     
-    @staticmethod
-    def save_annot_imgs_hybrid(img_pth, hybrid_df, pred_df, save_path, conf_thresh, background = "image"):
-        def convert_bbox(row):
-            x, y, w, h = row.loc['bbox']
-            # xmax, xmin = x + w/2, x - w/2
-            xmax, xmin = x + w, x
-            ymax, ymin = y + h, y
-            return [xmin, ymin, xmax, ymax]
-        img_name = os.path.basename(img_pth)
-        img_id = img_name.split(".")[0]
-        img_array = cv2.imread(img_pth)
-        if background == "image":
-            img_array = img_array[:, :, ::-1]
-            img = PIL.Image.fromarray(img_array)
-        else:
-            im_h, im_w = img_array.shape[0], img_array.shape[1]
-            img = PIL.Image.new("RGB", (im_w, im_h), color="white")
-        draw = PIL.ImageDraw.Draw(img)
-        font = ImageFont.truetype("arial.ttf", 16)
-        lbls = hybrid_df[hybrid_df.image_id == img_id]
-        lbls = lbls[lbls.score>=1]
-        pred = pred_df[pred_df.image_id == img_id]
-        pred = pred[pred.score >= conf_thresh]
-        n_fish = lbls.shape[0]
-        for idx, row in lbls.iterrows():
-            xmin, ymin, xmax, ymax = convert_bbox(row) # label box
-            ground_truth_id = str(idx)
-            # draw label box and ground_truth_id in black
-            draw.rectangle((xmin,ymin,xmax,ymax), outline="black", width=3)
-            draw.text((xmin+10, ymax-25), text = ground_truth_id, fill="black", stroke=0, stroke_color=(200), font=font)
-        for idx, row in pred.iterrows():
-            xmin, ymin, xmax, ymax = convert_bbox(row) # prediction box
-            conf = row.loc["score"]
-            detect_id = "dt" + str(idx)
-            # draw prediction box and text red
-            draw.rectangle((xmin,ymin,xmax,ymax), outline="red", width=2)
-            text_ = detect_id+" @ "+f"{conf:0.2f}" # detection tag
-            bbox1 = draw.textbbox((xmin, ymin), text = text_, font=font, anchor="lb") # top left
-            bbox2 = draw.textbbox((xmax, ymax), text = text_, font=font, anchor='rt') # bottom right 
-            draw.rectangle(bbox1, fill="red") # top left
-            draw.rectangle(bbox2, fill="red") # bottom right
-            # draw prediction box and label with confidence and detection_id
-            draw.text((xmin, ymin), text = text_, fill="white", stroke=8, stroke_color="white", font=font, anchor="lb")
-            draw.text((xmax, ymax), text = text_, fill="white", stroke=8, stroke_color="white", font=font, anchor='rt')
-        if n_fish > 0:
-            img.save(os.path.join(save_path,f"{img_id}_a.jpg")) 
-
     @staticmethod
     def save_annot_imgs_obb(img_pth, lbl_df, score_df, save_path, conf_thresh, background = "image"):
         img_name = os.path.basename(img_pth)
@@ -311,13 +265,18 @@ class Overlays:
         try:
             df = pd.read_csv(lbl_path, delimiter=' ', header=None)
             for index, row in df.iterrows():
-                x, y, w, h = row[1]*im_w, row[2]*im_h, row[3]*im_w, row[4]*im_h
+                cls, x, y, w, h = row[0], row[1]*im_w, row[2]*im_h, row[3]*im_w, row[4]*im_h
                 # print(x,y,w,h)
                 x1 = x - w/2
                 y1 = y - h/2
                 x2 = x + w/2
                 y2 = y + h/2
-                draw.rectangle((x1,y1,x2,y2), outline="black", width=1)
+                if int(cls) == 0:
+                    draw.rectangle((x1,y1,x2,y2), outline="#FF5F1F", width=1)
+                elif int(cls) == 1:
+                    draw.rectangle((x1,y1,x2,y2), outline="#FF1493", width=1)
+                else:
+                    draw.rectangle((x1,y1,x2,y2), outline="#FFFF00", width=1)
                 # draw.ellipse((x-s,y-s,x+s,y+s), fill=(200))
         except: print("label not processed")
         return img
@@ -426,3 +385,85 @@ class Overlays:
 
     # Example usage with a specified target size
     # plot_coco_boxes('path/to/your/image.jpg', 'path/to/your/annotations.json', target_size=(2048, 1500))
+
+    @staticmethod
+    def plot_bbox(df, filename):
+        img1_pred = df[df.filename == filename]
+        img1_bbox = img1_pred[["x", "y", "w", "h"]].values.tolist()
+        img1_fp = img1_pred.image_path.unique()[0]
+        im = Image.open(img1_fp)
+        # im = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
+        draw = ImageDraw.Draw(im)
+        for bbox in img1_bbox:
+            x, y, w, h = bbox
+            x1 = x - w/2
+            y1 = y - h/2
+            x2 = x + w/2
+            y2 = y + h/2
+            draw.rectangle((x1,y1,x2,y2), outline=(0, 0, 0), width=4)
+        im.show()
+
+    @staticmethod
+    def plot_xy_pts(df, filename):
+        img1_pred = df[df.filename == filename]
+        img1_pts = img1_pred[["x", "y"]].values.tolist()
+        img1_fp = img1_pred.image_path.unique()[0]
+        im = Image.open(img1_fp)
+        # im = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
+        draw = ImageDraw.Draw(im)
+        s=6
+        for pt in img1_pts:
+            x, y = pt
+            draw.ellipse((x-s,y-s,x+s,y+s), fill=(200))
+        im.show()
+        
+    @staticmethod
+    def plot_segmentation(img_filepath, seg_txt_filepath):
+        with open (seg_txt_filepath, "r") as f:
+            segs = f.readlines()
+        im = Image.open(img_filepath)
+        # im = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
+        draw = ImageDraw.Draw(im)
+        for seg in segs:
+            s1c = int(seg[0])
+            s1seg = seg[1:].split(" ")
+            s1seg = list(filter(None, s1seg))
+            s1seg = list(map(float, s1seg))
+            segx, segy = np.array(s1seg[0::2])*4096, np.array(s1seg[1::2])*2176
+            segxy = [(x, y) for x, y in zip(segx, segy)]
+            draw.polygon(segxy, fill=None, outline="red", width=3)
+        im.show()
+
+    @staticmethod
+    def sam_auto_annotate(df, filename, weights):
+        img1_pred = df[df.filename == filename]
+        img1_filepath = img1_pred.image_path.unique()[0]
+        output_dir="./runs/sam_test"
+        results = auto_annotate(data=img1_filepath, det_model=weights, sam_model="sam2_l.pt", output_dir=output_dir)
+        res_pth = os.path.join(output_dir, filename.split(".")[0]+".txt")
+        Overlays.plot_segmentation(img1_filepath, res_pth)
+
+    @staticmethod
+    def plot_label_overlays(image_list, label_list, output_dir, overwrite=False):
+        ''' Function to plot overlays of images and labels '''
+        df_l = pd.DataFrame({"label_path": label_list})
+        df_l["Filename"] = df_l.label_path.apply(lambda x: os.path.basename(x).split(".")[0])
+        df = pd.DataFrame({"image_path": image_list})
+        df["Filename"] = df.image_path.apply(lambda x: os.path.basename(x).split(".")[0])
+        df = df.merge(df_l, on="Filename")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        for img_pth, lbl_pth in zip(df.image_path, df.label_path):
+            out_image_path = os.path.join(output_dir, os.path.basename(img_pth))
+            exists = os.path.exists(out_image_path)
+            if overwrite:
+                print(f"Processing {img_pth} and {lbl_pth}", end=" \r")
+                img = Overlays.disp_lbl_bbox(img_pth, lbl_pth)
+                img.save()
+            else:
+                if not exists:
+                    print(f"Processing {img_pth} and {lbl_pth}", end=" \r")
+                    img = Overlays.disp_lbl_bbox(img_pth, lbl_pth)
+                    img.save(out_image_path)
+                else:
+                    print(f"Skipping {img_pth} as it already exists", end=" \r")

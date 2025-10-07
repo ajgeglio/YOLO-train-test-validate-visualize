@@ -3,7 +3,6 @@ import glob
 import pandas as pd
 import numpy as np
 from PIL import Image, ImageDraw
-from utils import Utils
 from iou import CalculateIntersection
 
 '''
@@ -18,37 +17,130 @@ This class will append the results to existing CSV files, allowing for increment
 '''
 class PredictOutput:
     def __init__(self) -> None:
-        self
+        self  # This line does nothing and can be removed
 
+    @staticmethod
+    def _write_labels(lbl, dict, img_id, im_h, im_w, lbls_csv_pth):
+        # Helper to write label info to CSV
+        try:
+            df1 = pd.read_csv(lbl, delimiter=" ", header=None)
+            cls_l, x_l, y_l, w_l, h_l = df1[0], df1[1], df1[2], df1[3], df1[4]
+            names_l = list(map(lambda x: dict[x], cls_l))
+            img_nm_l = [img_id] * len(cls_l)
+            im_h_l, im_w_l = [im_h] * len(cls_l), [im_w] * len(cls_l)
+            ar_l = np.c_[img_nm_l, names_l, cls_l, x_l, y_l, w_l, h_l, im_h_l, im_w_l]
+            df_l = pd.DataFrame(ar_l)
+            df_l.to_csv(lbls_csv_pth, mode='a', header=False)
+            return df1
+        except pd.errors.EmptyDataError:
+            return None
+        except FileNotFoundError:
+            return None  # Add this to avoid crash if label file is missing
+
+    @staticmethod
+    def _plot_predictions(r, img_name, plots_folder, df1, has_labels):
+        # Helper to plot predictions and labels
+        n_bxs = r.boxes.data.cpu().shape[0]
+        if n_bxs == 0:
+            return
+        img_save_path = os.path.join(plots_folder, img_name)
+        im_array = r.plot(conf=True, probs=False, line_width=1, labels=True, font_size=4)
+        im_h, im_w = im_array.shape[0], im_array.shape[1]
+        im = Image.fromarray(im_array[..., ::-1])
+        draw = ImageDraw.Draw(im)
+        if has_labels and df1 is not None:
+            for _, row in df1.iterrows():
+                # row[1], row[2], ... are assumed to be normalized coordinates
+                # But if df1 is loaded from _write_labels, columns may be strings
+                try:
+                    x, y, w, h = float(row[1])*im_w, float(row[2])*im_h, float(row[3])*im_w, float(row[4])*im_h
+                except Exception:
+                    continue  # skip if conversion fails
+                x1 = x - w/2
+                y1 = y - h/2
+                x2 = x + w/2
+                y2 = y + h/2
+                draw.rectangle((x1, y1, x2, y2), outline="#FF00FF", width=2)
+        im.save(img_save_path)
+
+    @staticmethod
     def YOLO_predict_w_outut(r, lbl, img_path, pred_csv_pth, lbls_csv_pth, plots_folder=None, plot=False, has_labels=False):
         img_name = os.path.basename(img_path)
         img_id = img_name.split(".")[0]
-        ## indexing the YOLO results object for single image
         n_bxs = r.boxes.data.cpu().shape[0]
         dict = r.names
         cls = r.boxes.cls.data.cpu().numpy().astype(int)
         xywh = r.boxes.xywhn.data.cpu().numpy()
         conf = r.boxes.conf.data.cpu().numpy()
-        # # optional output for box xywh in absolute pixel coordinates
-        # xywh = r.boxes.xywh.data.cpu().numpy() #https://docs.ultralytics.com/reference/engine/results/#ultralytics.engine.results.Boxes
-        # # optional output for top left, bottom right box box coodinates
-        # x1y1x2y2 = ultralytics.utils.ops.xywh2xyxy(xywh) #https://docs.ultralytics.com/reference/utils/ops/#ultralytics.utils.ops.xyxy2xywh
         im_h, im_w = r.orig_shape[0], r.orig_shape[1]
         im_h_p, im_w_p = [im_h]*n_bxs, [im_w]*n_bxs
         names = list(map(lambda x: dict[x], cls))
         img_nm_p = [img_id]*len(cls)
 
-        ## Results Output to dataframe 
+        # Results Output to dataframe 
         ar = np.c_[img_nm_p, names, cls, xywh, conf, im_h_p, im_w_p]
         df = pd.DataFrame(ar)
         df.to_csv(pred_csv_pth, mode='a', header=False)
+
+        # Labels Output (_l) suffix
+        df1 = None
+        if has_labels:
+            df1 = PredictOutput._write_labels(lbl, dict, img_id, im_h, im_w, lbls_csv_pth)
+
+        # Plotting
+        if plot:
+            PredictOutput._plot_predictions(r, img_name, plots_folder, df1, has_labels)
         
-        ## Labels Output (_l) suffix
+    @staticmethod
+    def YOLO_predict_w_outut_sahi(coco_json_list, lbl, img_path, pred_csv_pth, lbls_csv_pth, plots_folder=None, plot=False, has_labels=False):
+        # coco_json_list: output of sahi.result.object_prediction_list.to_coco_json()
+        img_name = os.path.basename(img_path)
+        img_id = img_name.split(".")[0]
+
+        # Parse coco_json_list (list of dicts)
+        rows = []
+        im_w, im_h = None, None
+        for idx, obj in enumerate(coco_json_list):
+            bbox = obj['bbox']  # [x, y, w, h] in absolute pixels
+            category_id = obj['category_id']
+            score = obj.get('score', 1.0)
+            # Convert bbox to normalized xywh
+            # Need image size for normalization
+            if idx == 0:
+                try:
+                    from PIL import Image
+                    im = Image.open(img_path)
+                    im_w, im_h = im.size
+                except Exception:
+                    im_w, im_h = 1, 1  # fallback
+            x, y, w, h = bbox
+            x_c = (x + w / 2) / im_w
+            y_c = (y + h / 2) / im_h
+            w_n = w / im_w
+            h_n = h / im_h
+            rows.append([
+                img_id,
+                obj.get('category_name', str(category_id)),
+                category_id,
+                x_c,
+                y_c,
+                w_n,
+                h_n,
+                score,
+                im_h,
+                im_w
+            ])
+        if rows:
+            df = pd.DataFrame(rows)
+            df.to_csv(pred_csv_pth, mode='a', header=False)
+
+        # Labels Output (_l) suffix
         if has_labels:
             try:
                 df1 = pd.read_csv(lbl , delimiter=" ", header=None)
                 cls_l, x_l, y_l, w_l, h_l = df1[0], df1[1], df1[2], df1[3], df1[4]
-                names_l = list(map(lambda x: dict[x], cls_l))
+                # Use category_name if available, else category_id
+                names_l = list(map(lambda x: str(x), cls_l))
                 img_nm_l = [img_id]*len(cls_l)
                 im_h_l, im_w_l = [im_h]*len(cls_l), [im_w]*len(cls_l)
                 ar_l = np.c_[img_nm_l, names_l, cls_l, x_l, y_l, w_l, h_l, im_h_l, im_w_l]
@@ -56,27 +148,43 @@ class PredictOutput:
                 df_l.to_csv(lbls_csv_pth, mode='a', header=False)
             except pd.errors.EmptyDataError:
                 pass
-        
-        if plot:
-            if n_bxs > 0:
-                ##### DRAWING #####
-                ## Drawing the prediction
-                img_save_path = os.path.join(plots_folder,img_name)
-                im_array = r.plot(conf=True, probs=False, line_width=1, labels=True, font_size=4)  # plot a BGR numpy array of predictions
-                ## Drawing the label in black
-                im_h, im_w = im_array.shape[0], im_array.shape[1]
-                im = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
+            except FileNotFoundError:
+                pass  # Add this to avoid crash if label file is missing
+
+        if plot and rows:
+            try:
+                im = Image.open(img_path).convert("RGB")
                 draw = ImageDraw.Draw(im)
-                if has_labels:
-                    for index, row in df1.iterrows():
-                        x, y, w, h = row[1]*im_w, row[2]*im_h, row[3]*im_w, row[4]*im_h
+                for row in rows:
+                    # row: [img_id, name, cls, x_c, y_c, w_n, h_n, conf, im_h, im_w]
+                    x_c, y_c, w_n, h_n = float(row[3]), float(row[4]), float(row[5]), float(row[6])
+                    im_w, im_h = int(row[9]), int(row[8])
+                    x = x_c * im_w
+                    y = y_c * im_h
+                    w = w_n * im_w
+                    h = h_n * im_h
+                    x1 = x - w/2
+                    y1 = y - h/2
+                    x2 = x + w/2
+                    y2 = y + h/2
+                    draw.rectangle((x1, y1, x2, y2), outline=(255, 0, 0), width=2)
+                if has_labels and df1 is not None:
+                    for _, row in df1.iterrows():
+                        try:
+                            x, y, w, h = float(row[1])*im_w, float(row[2])*im_h, float(row[3])*im_w, float(row[4])*im_h
+                        except Exception:
+                            continue
                         x1 = x - w/2
                         y1 = y - h/2
                         x2 = x + w/2
                         y2 = y + h/2
-                        draw.rectangle((x1,y1,x2,y2), outline=(0, 0, 0), width=4)
-                im.save(img_save_path)  # save image
-                
+                        draw.rectangle((x1, y1, x2, y2), outline=(0, 0, 0), width=4)
+                img_save_path = os.path.join(plots_folder, img_name)
+                im.save(img_save_path)
+            except Exception as e:
+                print(f"Plotting failed for {img_path}: {e}")
+
+    @staticmethod
     def YOLO_predict_w_outut_obb(r, lbl, img_path, pred_csv_pth, lbls_csv_pth, plots_folder=None, plot=False, has_labels=False):
         img_name = os.path.basename(img_path)
         img_id = img_name.split(".")[0]
@@ -103,6 +211,7 @@ class PredictOutput:
         df.to_csv(pred_csv_pth, mode='a', header=False)
         
         ## Labels Output (_l) suffix
+        df1 = None  # Add this to avoid UnboundLocalError
         if has_labels:
             try:
                 df1 = pd.read_csv(lbl , delimiter=" ", header=None)
@@ -117,28 +226,24 @@ class PredictOutput:
                 pass
             except FileNotFoundError:
                 pass
-        
-        if plot:
-            if n_bxs > 0:
-                ##### DRAWING #####
-                ## Drawing the prediction
-                img_save_path = os.path.join(plots_folder,img_name)
-                im_array = r.plot(conf=True, probs=False, line_width=1, labels=True, font_size=4)  # plot a BGR numpy array of predictions
-                ## Drawing the label in black
-                im_h, im_w = im_array.shape[0], im_array.shape[1]
-                im = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
-                draw = ImageDraw.Draw(im)
-                if has_labels:
-                    for index, row in df1.iterrows():
-                        # x, y, w, h = row[1]*im_w, row[2]*im_h, row[3]*im_w, row[4]*im_h
+
+        if plot and n_bxs > 0:
+            img_save_path = os.path.join(plots_folder,img_name)
+            im_array = r.plot(conf=True, probs=False, line_width=1, labels=True, font_size=4)
+            im_h, im_w = im_array.shape[0], im_array.shape[1]
+            im = Image.fromarray(im_array[..., ::-1])
+            draw = ImageDraw.Draw(im)
+            if has_labels and df1 is not None:
+                for _, row in df1.iterrows():
+                    try:
                         xs = (row[1], row[3], row[5], row[7])
-                        print(xs)
                         ys = (row[2], row[4], row[6], row[8])
-                        print(ys)
-                        x1, x2, x3, x4 = (x*im_w for x in xs)
-                        y1, y2, y3, y4 = (y*im_h for y in ys)
+                        x1, x2, x3, x4 = (float(x)*im_w for x in xs)
+                        y1, y2, y3, y4 = (float(y)*im_h for y in ys)
                         draw.polygon([x1,y1,x2,y2, x3, y3, x4, y4], outline=(0, 0, 0), width=3)
-                im.save(img_save_path)  # save image
+                    except Exception:
+                        continue
+            im.save(img_save_path)
 
     def process_labels(self, label_list):
     # function to combine the the labels and cage boxes for LMBS images
@@ -156,6 +261,10 @@ class PredictOutput:
                 parts = line.strip().split()
                 if len(parts) == 5:
                     name, x, y, w, h = parts
+                    try:
+                        x, y, w, h = float(x), float(y), float(w), float(h)
+                    except Exception:
+                        continue  # skip malformed lines
                     # append to the dataframe
                     labels_df = pd.concat(
                         [labels_df, pd.DataFrame([{"Filename": Filename, "cls": name, "x": float(x), "y": float(y), "w": float(w), "h": float(h)}])],
@@ -199,6 +308,8 @@ class PredictOutput:
             'x_c', 'y_c', 'w_c', 'h_c', 'imh', 'imw',
             f'{input_type}_id', 'intersection', 'inside', 'conf'
         ]
+        # Some columns may not exist depending on input_type, so use intersection with df_all.columns
+        columns = [col for col in columns if col in df_all.columns]
         return df_all[columns]
 
     def save_cage_box_label_outut(self, df_pred, df_lbl, img_dir, run_path):
@@ -208,6 +319,7 @@ class PredictOutput:
         cage_box_list = sorted(glob.glob(os.path.join(cage_box_dir, "*.txt")))
         if len(cage_box_list) == 0:
             print(f"No cage bounding box files found in {cage_box_dir}")
+            return  # Add return to avoid proceeding with empty cage_box_list
         
         # Process the cage bounding box files into a dataframe
         cage_box_df = self.process_labels(cage_box_list)

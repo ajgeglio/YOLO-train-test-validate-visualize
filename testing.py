@@ -14,7 +14,8 @@ This class also uses advance plotting features to visualize the True and False p
 '''
 
 class Testing:
-    def return_lbl_pred_df(self, results, lbls, imgs):
+    @staticmethod
+    def return_lbl_pred_df(results, lbls, imgs):
           df_prd = pd.DataFrame(columns=['Filename', 'names','cls','x', 'y', 'w', 'h', 'conf', 'imh', 'imw'])
           df_lbl = pd.DataFrame(columns=['Filename', 'names','cls','x', 'y', 'w', 'h'])
           for r, lbl, img_path in zip(results, lbls, imgs):
@@ -58,8 +59,8 @@ class Testing:
                 df_prd['detect_id'] = df_prd['Filename'].apply(lambda x: x.split(".")[0]) +"_dt_"+ df_prd.index.astype('str')
                 df_lbl['ground_truth_id'] = df_lbl['Filename'].apply(lambda x: x.split(".")[0]) +"_"+ df_lbl.index.astype('str')
           return df_lbl, df_prd
-          
-    def return_pred_df(self, results, imgs):
+    @staticmethod
+    def return_pred_df(results, imgs):
         df_prd = pd.DataFrame(columns=['Filename', 'names','cls','x', 'y', 'w', 'h', 'conf', 'imh', 'imw'])
         for r, img_path in zip(results, imgs):
             img_name = os.path.basename(img_path).split(".")[0]

@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--results_confidence", type=float, default=0.2, help="Results confidence threshold")
     parser.add_argument("--start_batch", type=int, default=0, help="Start batch index")
     parser.add_argument("--has_labels", action="store_true", help="Whether labels are present")
+    parser.add_argument("--run_predict", action="store_true", help="Whether to run prediction")
     parser.add_argument("--plot", action="store_true", help="Whether to plot overlays")
     parser.add_argument("--substrate_path", help="Optional substrate path")  # Uncomment if needed
     args = parser.parse_args()
@@ -30,7 +31,7 @@ def main():
         "--metadata", args.metadata,
         "--op_table", args.op_table,
         "--results_confidence", str(args.results_confidence),
-        "--start_batch", str(args.start_batch)
+        "--start_batch", str(args.start_batch),
     ]
         # 🌟 NEW: Conditionally add the directory OR the CSV path
     if args.img_directory is not None:
@@ -40,6 +41,8 @@ def main():
         # Note: The variable name is 'image_list_csv' in the function signature, 
         # but corresponds to the argument '--img_list_csv'
         cmd.extend(["--img_list_csv", args.image_list_csv])
+    if args.run_predict:
+        cmd.append("--run_predict")
     if args.has_labels:
         cmd.append("--has_labels")
     if args.plot:

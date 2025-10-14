@@ -4,15 +4,16 @@ import argparse
 import time
 import subprocess
 from datetime import datetime
-# Assuming 'from results import YOLOResults' and other necessary imports are available
-
-# [Existing functions: parse_arguments, run_predict, output_YOLO_results remain unchanged]
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+# Importing the necessary modules from the src directory
+from results import LBLResults, YOLOResults 
 
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Yolov8 inference, prediction and scoring for goby detection")
     parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
     parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
+    parser.add_argument('--run_predict', action="store_true", help='Argument to run inference and output results. Without this, only results will be processed.')
     parser.add_argument('--img_directory', default=None, help='Directory of Images')
     parser.add_argument('--img_list_csv', default=None, help='Path to csv list of image paths')
     parser.add_argument('--lbl_list_csv', default=None, help='Path to csv list of label paths')
@@ -25,7 +26,6 @@ def parse_arguments():
     parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
     parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
     parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
-    parser.add_argument('--img_size', default=2048, type=int, help='Max image dimension')
     parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
     parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
     parser.add_argument('--results_confidence', default=0.2, type=float, help='Minimum confidence in results output table')
@@ -68,20 +68,19 @@ def output_YOLO_results(meta_path, yolo_infer_path, substrate_path, op_path, con
     # This is a placeholder since the YOLOResults class is not provided.
     # In a real scenario, this would import and run.
     print(f"Processing results with confidence: {conf_thresh}")
-    
-    class MockYOLOResults:
-        def __init__(self, *args):
-            pass
-        def yolo_results(self, find_closest=False):
-            return self
-        def to_csv(self, path, index=False):
-            print(f"Mocking saving results to {path}")
-        def head(self):
-            return "Mock DataFrame Head"
 
-    output = MockYOLOResults(meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh)
+    output = YOLOResults(meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh)
     yolores = output.yolo_results(find_closest=find_closest)
     return yolores
+
+def output_LBL_results(meta_path, yolo_lbl_path, substrate_path, op_path, find_closest=False):
+    # This is a placeholder since the LBLResults class is not provided.
+    # In a real scenario, this would import and run.
+    print(f"Processing results for labels")
+
+    output = LBLResults(meta_path, yolo_lbl_path, substrate_path, op_path)
+    lblres = output.lbl_results(find_closest=find_closest)
+    return lblres
 
 
 def main():
@@ -100,33 +99,38 @@ def main():
     print("-------------------------\n")
 
     # Run the prediction
-    run_predict(
-        img_directory=args.img_directory,
-        image_list_csv=args.img_list_csv,
-        weights=args.weights,
-        output_name=output_name,
-        batch_size=args.batch_size,
-        has_labels=args.has_labels,
-        overlays=args.plot,
-        conf_thresh=args.confidence,
-        start_batch=args.start_batch
-    )
+    if args.run_predict:
+        run_predict(
+            img_directory=args.img_directory,
+            image_list_csv=args.img_list_csv,
+            weights=args.weights,
+            output_name=output_name,
+            batch_size=args.batch_size,
+            has_labels=args.has_labels,
+            overlays=args.plot,
+            conf_thresh=args.confidence,
+            start_batch=args.start_batch
+        )
 
     # Process results
     yolo_infer_path = os.path.join(run_path, "predictions.csv")
     results_confidence = args.results_confidence
 
-    yolores = output_YOLO_results(args.metadata, yolo_infer_path, args.substrate, args.op_table, results_confidence, find_closest=True)
+    yolores = output_YOLO_results(args.metadata, yolo_infer_path, args.substrate, args.op_table, results_confidence, find_closest=False)
     
     # Save results
-    out_path = os.path.join(run_path, f"{args.output_name}_results.csv")
+    out_path = os.path.join(run_path, f"inference_results_{results_confidence:04.2f}.csv")
     print(f"saving YOLO results to csv: {out_path}")
     yolores.to_csv(out_path, index=False)
     print("Result Head:", yolores.head())
-    
-    print(f"\n{'='*50}\nRUN END TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'='*50}\n")
-
-
+    if args.has_labels:
+        # fndf_path = os.path.join(run_path, "false_negatives.csv")
+        lbl_pth = os.path.join(run_path, "labels.csv")
+        lbl_report = output_LBL_results(args.metadata, lbl_pth, args.substrate, args.op_table, find_closest=False)
+        out_path = os.path.join(run_path, f"label_box_results.csv")
+        print(f"saving label box results to csv: {out_path}")
+        lbl_report.to_csv(out_path, index=False)
+    print(f"\n{'='*50}\nRUN END TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'='*50}\n\n")
 if __name__ == "__main__":
     
     # Parse arguments early to get output_name and run_path before logging

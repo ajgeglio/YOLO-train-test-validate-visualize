@@ -30,7 +30,6 @@ def parse_arguments():
     parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
     parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
     parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
-    parser.add_argument('--img_size', default=2048, type=int, help='Max image dimension')
     parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
     parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
@@ -175,13 +174,14 @@ def main():
                 )
         else:
             model = YOLO(args.weights)
+            image_size = model.ckpt["train_args"]["imgsz"]
             results = model(
                 imgs,
                 stream=True,
                 half=True,
                 iou=args.iou,
                 conf=args.confidence,
-                imgsz=args.img_size,
+                imgsz=image_size,
                 classes=[0]
             )
             for r, img_path in zip(results, imgs):
@@ -201,6 +201,9 @@ def main():
         df_pred, df_lbls = Reports.generate_summary(pred_csv_path, lbl_csv_path)
         df_scores = Reports.scores_df(df_lbls, df_pred, iou_tp=0.5)
         df_scores.to_csv(os.path.join(run_path, "scores.csv"))
+        fndf = Reports.return_fn_df(df_lbls, df_pred, conf_thresh=args.confidence)
+        fndf = fndf[fndf.fn==1]
+        fndf.to_csv(os.path.join(run_path, f"false_negatives_conf_thresh_{args.confidence}.csv"), index=False)
 
     # Handle cages if required
     if args.has_cages:

@@ -97,7 +97,7 @@ class Reports:
         return scores.reset_index(drop=True)
 
     @staticmethod
-    def return_fn_df(df_lbls, df_pred, iou_tp=0.5, conf_thresh=0.2):
+    def return_fn_df(df_lbls, df_pred, iou_tp=0.5, conf_thresh=0.1):
         # Merge labels and predictions based on Filename and confidence threshold
         df_merge = df_lbls.merge(df_pred[df_pred.conf >= conf_thresh], on='Filename', suffixes=('_l', '_p'), how='left')
         # Calculate pixel distance

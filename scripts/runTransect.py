@@ -24,11 +24,13 @@ def arg_parser():
                         help="The name of the test run folder where results are stored.")
     parser.add_argument("--collect_id", type=str, required=False, default='20200806_001_Iver3069_ABS1',
                         help="The specific collect_id (transect) to analyze.")
+    parser.add_argument("--weights_path", type=str, required=False, default="GobyFinderAUV2048.pt",
+                        help="Path to the model weights file.")
     parser.add_argument("--confidence_threshold", type=float, required=False, default=0.3,
                         help="The confidence threshold for choosing inference results file.")
     return parser.parse_args()
 
-def load_config(test_run: str, collect_id: str, confidence_threshold: float) -> Dict[str, pathlib.Path]:
+def load_config(test_run: str, collect_id: str, confidence_threshold: float, weights_path: str) -> Dict[str, pathlib.Path]:
     """Defines and resolves all necessary file paths."""
     
     # Use environment variables or a config file for Z: drive to improve portability.
@@ -36,11 +38,11 @@ def load_config(test_run: str, collect_id: str, confidence_threshold: float) -> 
     BASE_DRIVE = r"Z:" 
     
     PATHS = {
-        "weights": BASE_DRIVE + r"\__AdvancedTechnologyBackup\06_ModelWeights\GobyFinderAUV2048.pt",
+        "weights": weights_path if 'weights_path' in locals() else BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\Weights\GobyFinderAUV2048.pt",
         "poly_lbl_assmt": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\FishScaleLabelAssessment\2020-2023_assessment_confirmedfish.pkl",
         "op_table": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx",
         "metadata": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\MetadataCombined\all_annotated_meta_splits_20250915.csv",
-        "img_directory": BASE_DRIVE + r"\__Organized_Directories_InProgress\GobyFinderDatasets\AUV_datasets\images",
+        "img_directory": BASE_DRIVE + r"\__Organized_Directories_InProgress\GobyFinderDatasets\AUV_datasets\full\images",
         "run_folder": pathlib.Path(f"C:\\Users\\ageglio\\ageglio-1\\gobyfinder_yolov8\\output\\test_runs\\{test_run}"),
     }
 
@@ -310,18 +312,9 @@ def main():
     
     try:
         # 1. Configuration
-        paths = load_config(args.test_run, args.collect_id, args.confidence_threshold)
-        
-        # 3. Data Loading and Filtering
-        data = load_and_filter_data(paths, args.collect_id)
-        confidence_threshold = data["confidence_threshold"]
-        # 4. Metric Calculation
-        metrics = calculate_metrics(data)
-
-        # 5. Report Generation
-        generate_report(metrics, data, paths)
-        
+        paths = load_config(args.test_run, args.collect_id, args.confidence_threshold, args.weights_path)
         # 2. Print Inference Command (Optional, for reference)
+        confidence_threshold = args.confidence_threshold
         command = (
             f"python scripts/runResults.py "
             f"--img_directory '{paths['img_directory'].as_posix()}' "
@@ -332,8 +325,17 @@ def main():
             f"--has_labels "
             f"--results_confidence {confidence_threshold}"
         )
-        print("\nInference Command Reference:\n", command, "\n")
+        print("\nInference Run Command Reference:\n", command, "\n")
+        
+        # 3. Data Loading and Filtering
+        data = load_and_filter_data(paths, args.collect_id)
+        # 4. Metric Calculation
+        metrics = calculate_metrics(data)
+
+        # 5. Report Generation
+        generate_report(metrics, data, paths)
         print("\n--- Pipeline Complete ---")
+        
         
 
     except Exception as e:

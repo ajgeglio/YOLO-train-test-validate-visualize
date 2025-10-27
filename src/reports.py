@@ -1,5 +1,6 @@
 import os
 from iou import *
+from results import LBLResults
 from utils import Utils
 import datetime
 import matplotlib.pyplot as plt
@@ -35,6 +36,30 @@ class Reports:
         print(f"Total number of fish in test set", len(df_lbls), "(Ground truths)")
         print(f"Total number of fish predicted: {tot_pred:,}, at a min confidence: {df_pred.conf.min():0.2f}")
         return df_pred, df_lbls
+    
+    @staticmethod
+    def save_predictions_to_csv(df, csv_path):
+        """Save predictions to a CSV file, ensuring no duplicates."""
+        df['detect_id'] = df.Filename + "_dt_" + df.index.astype('str')
+        df = df.drop_duplicates(subset="detect_id")
+        df.to_csv(csv_path, header=True)
+
+    @staticmethod
+    def save_labels_to_csv(df, csv_path):
+        """Save labels to a CSV file, ensuring no duplicates."""
+        df = df.drop_duplicates(subset=['cls', 'x', 'y', 'w', 'h'])
+        df = df.sort_values(by="Filename")
+        df['ground_truth_id'] = df['Filename'] + "_" + df.index.astype('str')
+        df.to_csv(csv_path, header=True)
+
+    @staticmethod
+    def output_LBL_results(meta_path, yolo_lbl_path, substrate_path, op_path, find_closest=False):
+        # This is a placeholder since the LBLResults class is not provided.
+        # In a real scenario, this would import and run.
+        print(f"Processing results for labels")
+        output = LBLResults(meta_path, yolo_lbl_path, substrate_path, op_path)
+        lblres = output.lbl_results(find_closest=find_closest)
+        return lblres
 
     @staticmethod
     def scores_df(df_lbls, df_pred, iou_tp=0.5):

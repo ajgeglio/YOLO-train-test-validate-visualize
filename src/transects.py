@@ -103,7 +103,16 @@ class Transects:
         biomass_transect = Transects.calculate_distance_along_track(biomass_transect)
         return biomass_transect
 
-    def plot_biomass_comparison_moving_average(infer_transect, lbl_transect=None, poly_transect=None, moving_average_window=5, save_path=None):
+    def plot_biomass_comparison_moving_average(primary_transect, 
+                                               primary_lbl=None,
+                                               primary_window=100,
+                                               secondary_transect=None, 
+                                               secondary_lbl=None, 
+                                               secondary_window=100,
+                                               tertiary_transect=None, 
+                                               tertiary_lbl=None, 
+                                               tertiary_window=100, 
+                                               save_path=None):
         """
         Generates a plot of biomass density predicted and observed moving average along transect
         vs. cumulative distance for two surveys.
@@ -113,24 +122,27 @@ class Transects:
         # Define the transects, labels, and colors to be plotted
         # (transect_object, plot_label, line_color)
         transects_to_plot = [
-            (infer_transect, 'Inferred box weight', 'blue')
+            (primary_transect, primary_lbl if primary_lbl else 'Inferred box weight', 'blue')
         ]
 
-        if lbl_transect is not None:
-            transects_to_plot.append((lbl_transect, 'Label box weight', 'orange'))
-        
-        if poly_transect is not None:
-            transects_to_plot.append((poly_transect, 'Polynomial weight', 'green'))
+        if secondary_transect is not None:
+            transects_to_plot.append((secondary_transect, secondary_lbl if secondary_lbl else 'Secondary transect', 'orange'))
+
+        if tertiary_transect is not None:
+            transects_to_plot.append((tertiary_transect, tertiary_lbl if tertiary_lbl else 'Tertiary transect', 'green'))
 
         # Loop through the transects to calculate the moving average and plot
+        i = 0
         for transect_data, label, color in transects_to_plot:
+            i += 1
             # Get distance (X-axis) and biomass (Y-axis)
             distance = transect_data.cumulative_distance_meters
             biomass = transect_data.biomass_g_p_m2
-            
+               
             # Calculate the moving average for biomass
+            window = primary_window if i == 1 else secondary_window if i == 2 else tertiary_window
             biomass_ma = biomass.rolling(
-                window=moving_average_window, 
+                window=window, 
                 min_periods=1
             ).mean()
             
@@ -140,7 +152,7 @@ class Transects:
         # Set plot aesthetics
         plt.xlabel('Distance along track (m)', fontsize=12)
         plt.ylabel('Biomass (g/m$^2$)', fontsize=12)
-        plt.title(f'Biomass Moving Average (Window={moving_average_window}) Comparison Along Transect', fontsize=14)
+        plt.title(f'Biomass Moving Average Comparison Along Transect', fontsize=14)
         plt.legend()
         plt.grid(True, linestyle=':', alpha=0.6)
         plt.tight_layout()

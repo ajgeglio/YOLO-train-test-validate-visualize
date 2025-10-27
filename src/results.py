@@ -123,18 +123,21 @@ class YOLOResults:
                 with open(os.path.join(base_path, "discrepancy.txt"), "w") as f:
                     discrepant_images = list(set(im_inferred).difference(set(im_in_meta)))
                     f.write('\n'.join(discrepant_images))
-            if df_combined.imw.all() != df_combined.imw_infer.all():
-                print("Warning: Image width metadata does not match inferred image width.")
-            if df_combined.imh.all() != df_combined.imh_infer.all():
-                print("Warning: Image height metadata does not match inferred image height.")
-                    
+            try:
+                if df_combined.imw.all() != df_combined.imw_infer.all():
+                    print("Warning: Image width metadata does not match inferred image width.")
+                if df_combined.imh.all() != df_combined.imh_infer.all():
+                    print("Warning: Image height metadata does not match inferred image height.")
+            except Exception as e:
+                print("Unable to check imw/imh metadata and inference consistency:", e)
+
         return df_combined
 
     def clean_yolo_results(self, **kwargs):
         conf_thresh = self.conf_thresh
         df_combined = self.combine_meta_pred_substrate(**kwargs)
         columns_ = [
-            "Time_s", "Filename", "MISSION_NAME", "LAKE_NAME", "Fish_ID", "x", "y", "w", "h", "conf", "conf_pass",
+            "Time_s", "Filename", "MISSION_NAME", "LAKE_NAME", "Fish_ID","cls", "x", "y", "w", "h", "conf", "conf_pass",
             "imw", "imh", "detect_id", "ground_truth_id", "Latitude", "Longitude",
             "DepthFromSurface_m", "DistanceToBottom_m", "Speed_kn", "Time_UTC", "image_path",
             "CollectID", "PS_mm", "ImageArea_m2", "year", "month", "day", "time",

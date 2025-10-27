@@ -128,12 +128,12 @@ class Utils:
     
     @staticmethod
     def write_list_txt(lst, filename):
-        with open(filename, "w") as f:
+        with open(filename, "w", encoding='utf-8-sig') as f:
             f.writelines("%s\n" % l for l in lst)
 
     @staticmethod
     def read_list_txt(filename):
-        with open(filename, "r") as f:
+        with open(filename, 'r', encoding='utf-8-sig') as f:
             return [line.strip() for line in f if line.strip()]
 
     @staticmethod
@@ -455,6 +455,7 @@ class Utils:
                 n_2176 += 1
         return n_2176, n_3000
     
+    @staticmethod
     def darwin_to_YOLO(filepath):
         ''' Convert Darwin JSON annotation to YOLO format text file'''
         dirname = os.path.dirname(filepath)
@@ -498,6 +499,7 @@ class Utils:
             matched_images (list): Image paths that have a corresponding label.
             matched_labels (list): Corresponding label paths.
         """
+        print("Matching images to labels by basename...")
         # Create a set of label basenames (without extension)
         label_basenames = {os.path.splitext(os.path.basename(lbl))[0] for lbl in label_paths}
 

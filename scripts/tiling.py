@@ -9,7 +9,7 @@ def parse_arguments():
     """Parses command-line arguments for the tiling script."""
     parser = argparse.ArgumentParser(description="Tiling datasets for training")
     parser.add_argument('--directory', required=True, help="Directory containing images and/or labels folders.")
-    parser.add_argument('--list_csv', action="store_true", help='Use images.csv and labels.csv for file paths.')
+    parser.add_argument('--list_file', action="store_true", help='Use images.txt and labels.txt for file paths.')
     parser.add_argument('--image_width', type=int, default=None, help="Image width (required in labels_only mode).")
     parser.add_argument('--image_height', type=int, default=None, help="Image height (required in labels_only mode).")
     parser.add_argument('--tile_size_x', type=int, default=1672)
@@ -21,6 +21,20 @@ def parse_arguments():
     group.add_argument('--labels_only', action="store_true", help="Only process labels.")
     return parser.parse_args()
 
+def return_path_list(path):
+    """Retrieve test images based on provided arguments."""
+    try:
+        print("Using list file", path)
+        # --- Change made here ---
+        # Use 'utf-8-sig' to automatically handle and remove the Byte Order Mark (BOM)
+        with open(path, 'r', encoding='utf-8-sig') as f:
+            path_list = f.read().splitlines()
+        # ------------------------
+        assert len(path_list) > 0, "No image paths found in csv"
+    except FileNotFoundError:
+        raise ValueError("Must provide an image directory or a path to a csv listing filepaths of images")
+    return sorted(path_list)
+
 def get_file_paths(args):
     """Retrieves file paths based on command-line arguments."""
     dir = os.path.abspath(args.directory)
@@ -28,11 +42,9 @@ def get_file_paths(args):
     
     # Get image paths
     if not args.labels_only:
-        if args.list_csv:
-            image_csv = os.path.join(dir, "images.csv")
-            if os.path.exists(image_csv):
-                with open(image_csv, 'r') as f:
-                    image_paths = f.read().splitlines()
+        if args.list_file:
+            image_csv = os.path.join(dir, "images.txt")
+            image_paths = return_path_list(image_csv)
         else:
             image_dir = os.path.join(dir, "images")
             for ext in ['*.jpg', '*.jpeg', '*.png', '*.tif', '*.tiff']:
@@ -40,15 +52,15 @@ def get_file_paths(args):
     
     # Get label paths
     if not args.images_only:
-        if args.list_csv:
-            label_csv = os.path.join(dir, "labels.csv")
-            if os.path.exists(label_csv):
-                with open(label_csv, 'r') as f:
-                    label_paths = f.read().splitlines()
+        if args.list_file:
+            label_csv = os.path.join(dir, "labels.txt")
+            label_paths = return_path_list(label_csv)
         else:
             label_dir = os.path.join(dir, "labels")
             label_paths.extend(glob.glob(os.path.join(label_dir, '*.txt')))
-
+    assert len(image_paths) > 0 or len(label_paths) > 0, "No image or label files found in the specified directory."
+    assert len(image_paths) == len(label_paths) or args.labels_only or args.images_only, \
+        "Mismatch between image and label counts. Ensure both directories have matching files or use --images_only or --labels_only."
     return sorted(image_paths), sorted(label_paths)
 
 def main():
@@ -83,6 +95,19 @@ def main():
     else:
         paths_to_process = image_paths
 
+    # Dynamic tile sizing based on detected or provided image height
+    # Initialize to defaults (or args, which use defaults if not provided)
+    tile_size_x, tile_size_y, overlap_x, overlap_y = args.tile_size_x, args.tile_size_y, args.overlap_x, args.overlap_y
+    
+    tiling_height_check = args.image_height if args.labels_only else None
+    
+    if tiling_height_check == 3000:
+        # Override defaults for 4096x3000 (3x3 grid)
+        tile_size_x, tile_size_y, overlap_x, overlap_y = 1672, 1307, 460, 460
+    elif tiling_height_check == 2176:
+        # Override defaults for 4096x2176 (3x2 grid)
+        tile_size_x, tile_size_y, overlap_x, overlap_y = 1672, 1307, 460, 438
+
     for file_path in tqdm.tqdm(paths_to_process):
         img_path, lbl_path = None, None
         
@@ -101,21 +126,26 @@ def main():
                 print(f"Warning: Could not read image at {img_path}. Skipping.")
                 continue
             img_h, img_w, _ = img.shape
-            
+            if img_h == 3000:
+                tile_size_x, tile_size_y, overlap_x, overlap_y = 1672, 1307, 460, 460
+            elif img_h == 2176:
+                tile_size_x, tile_size_y, overlap_x, overlap_y = 1672, 1307, 460, 438
+
             # Find the corresponding label path
             if not args.images_only:
-                # Assumes 'labels' folder is directly under the argument's directory
-                labels_dir = os.path.join(os.path.abspath(args.directory), 'labels')
-                lbl_path = os.path.join(labels_dir, base_name + '.txt')
+                if not args.list_file:
+                    # Assumes 'labels' folder is directly under the argument's directory
+                    labels_dir = os.path.join(os.path.abspath(args.directory), 'labels')
+                    lbl_path = os.path.join(labels_dir, base_name + '.txt')
+                else:
+                    # List file mode: Find the label path by matching the image path index
+                    try:
+                        idx = image_paths.index(img_path)
+                        lbl_path = label_paths[idx]
+                    except ValueError:
+                        print(f"Warning: Could not find label match for image {img_path}. Skipping labels for this image.")
+                        lbl_path = None # Set to None to skip label processing later
 
-        # Dynamic tile sizing based on detected or provided image height
-        tile_size_x, tile_size_y, overlap_x, overlap_y = args.tile_size_x, args.tile_size_y, args.overlap_x, args.overlap_y
-        
-        if img_h == 3000:
-            tile_size_x, tile_size_y, overlap_x, overlap_y = 1672, 1307, 460, 460
-        elif img_h == 2176:
-            tile_size_x, tile_size_y, overlap_x, overlap_y = 1672, 1307, 460, 438
-        
         labels_data = []
         if lbl_path and os.path.exists(lbl_path):
             with open(lbl_path, 'r') as f:
@@ -169,7 +199,6 @@ def main():
                         )
 
                         if is_intersecting:
-                            
                             # --- 2. Clip Coordinates at Tile Boundary ---
                             
                             # Calculate the intersection coordinates in pixel space
@@ -181,6 +210,10 @@ def main():
                             # Calculate new width and height of the clipped box
                             clipped_width = clipped_x_max - clipped_x_min
                             clipped_height = clipped_y_max - clipped_y_min
+
+                            # CRITICAL NEW FILTER: Skip if clipped width OR height is less than 50% of the original.
+                            if clipped_width < (width * 0.5) or clipped_height < (height * 0.5):
+                                continue
 
                             # Calculate new center point of the clipped box
                             clipped_x_center = clipped_x_min + clipped_width / 2

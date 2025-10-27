@@ -32,7 +32,7 @@ def parse_arguments():
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     return parser.parse_args()
 
-def run_predict(img_directory, image_list_csv, weights, output_name, batch_size, start_batch, conf_thresh, has_labels, overlays):
+def run_predict(img_directory, img_list_csv, weights, output_name, batch_size, start_batch, conf_thresh, has_labels, overlays):
     """Run the YOLO prediction script with the specified parameters."""
     cmd = [
         sys.executable,
@@ -46,11 +46,11 @@ def run_predict(img_directory, image_list_csv, weights, output_name, batch_size,
     # 🌟 NEW: Conditionally add the directory OR the CSV path
     if img_directory is not None:
         cmd.extend(["--img_directory", img_directory])
-    
-    elif image_list_csv is not None:
-        # Note: The variable name is 'image_list_csv' in the function signature, 
-        # but corresponds to the argument '--img_list_csv'
-        cmd.extend(["--img_list_csv", image_list_csv])
+    elif img_list_csv is not None:
+        cmd.extend(["--img_list_csv", img_list_csv])
+    else:
+        cmd.extend(["--img_directory", "default_directory"])  # Provide a default or handle this case appropriately
+
     if has_labels:
         cmd.append("--has_labels")
     if overlays:
@@ -102,7 +102,7 @@ def main():
     if args.run_predict:
         run_predict(
             img_directory=args.img_directory,
-            image_list_csv=args.img_list_csv,
+            img_list_csv=args.img_list_csv,
             weights=args.weights,
             output_name=output_name,
             batch_size=args.batch_size,

@@ -24,13 +24,13 @@ def arg_parser():
                         help="The name of the test run folder where results are stored.")
     parser.add_argument("--collect_id", type=str, required=False, default='20200806_001_Iver3069_ABS1',
                         help="The specific collect_id (transect) to analyze.")
-    parser.add_argument("--weights_path", type=str, required=False, default="GobyFinderAUV2048.pt",
-                        help="Path to the model weights file.")
     parser.add_argument("--confidence_threshold", type=float, required=False, default=0.3,
                         help="The confidence threshold for choosing inference results file.")
+    parser.add_argument("--run_results", action="store_true",
+                        help="Flag to run the results processing step.")
     return parser.parse_args()
 
-def load_config(test_run: str, collect_id: str, confidence_threshold: float, weights_path: str) -> Dict[str, pathlib.Path]:
+def load_config(test_run: str, collect_id: str, confidence_threshold: float) -> Dict[str, pathlib.Path]:
     """Defines and resolves all necessary file paths."""
     
     # Use environment variables or a config file for Z: drive to improve portability.
@@ -38,17 +38,15 @@ def load_config(test_run: str, collect_id: str, confidence_threshold: float, wei
     BASE_DRIVE = r"Z:" 
     
     PATHS = {
-        "weights": weights_path if 'weights_path' in locals() else BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\Weights\GobyFinderAUV2048.pt",
         "poly_lbl_assmt": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\FishScaleLabelAssessment\2020-2023_assessment_confirmedfish.pkl",
         "op_table": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx",
         "metadata": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\MetadataCombined\all_annotated_meta_splits_20250915.csv",
-        "img_directory": BASE_DRIVE + r"\__Organized_Directories_InProgress\GobyFinderDatasets\AUV_datasets\full\images",
         "run_folder": pathlib.Path(f"C:\\Users\\ageglio\\ageglio-1\\gobyfinder_yolov8\\output\\test_runs\\{test_run}"),
     }
 
     # Derived paths, created inside the run folder
     PATHS.update({
-        "new_inference_assmt": PATHS["run_folder"] / f"inference_results_{confidence_threshold:04.2f}.csv",
+        "lbl_inference_assmt": PATHS["run_folder"] / f"inference_results_{confidence_threshold:04.2f}.csv",
         "lbl_df": PATHS["run_folder"] / "labels.csv",
         "pred_df": PATHS["run_folder"] / "predictions.csv",
         "lbl_box_results": PATHS["run_folder"] / "label_box_results.csv",
@@ -57,19 +55,19 @@ def load_config(test_run: str, collect_id: str, confidence_threshold: float, wei
     })
 
     # Convert all path strings to pathlib.Path objects
-    paths = {key: pathlib.Path(value) if isinstance(value, str) else value for key, value in PATHS.items()}
+    # paths = {key: pathlib.Path(value) if isinstance(value, str) else value for key, value in PATHS.items()}
     
     # Ensure the output directory exists
-    paths["run_folder"].mkdir(parents=True, exist_ok=True)
-    paths["transect_folder"].mkdir(parents=True, exist_ok=True)
-    
-    return paths
+    PATHS["run_folder"].mkdir(parents=True, exist_ok=True)
+    PATHS["transect_folder"].mkdir(parents=True, exist_ok=True)
+
+    return PATHS
 
 # ======================================================================
 # 2. DATA LOADING AND FILTERING
 # ======================================================================
 
-def load_and_filter_data(paths: Dict[str, pathlib.Path], collect_id: str) -> Dict[str, Any]:
+def load_and_filter_data(paths: Dict[str, pathlib.Path], collect_id: str, confidence_threshold: float) -> Dict[str, Any]:
     """Loads and filters all necessary DataFrames for a specific transect."""
     
     print(f"Loading data for transect: {collect_id}")
@@ -89,7 +87,7 @@ def load_and_filter_data(paths: Dict[str, pathlib.Path], collect_id: str) -> Dic
         raise ValueError(f"No usable images found for {id_col}={collect_id}.")
 
     # 2. Load and filter inference assessment
-    infer_transects = pd.read_csv(paths["new_inference_assmt"])
+    infer_transects = pd.read_csv(paths["lbl_inference_assmt"], low_memory=False)
     infer_transects = infer_transects[infer_transects.Filename.isin(usable_images)].copy()
     
     if not infer_transects.empty:
@@ -97,7 +95,7 @@ def load_and_filter_data(paths: Dict[str, pathlib.Path], collect_id: str) -> Dic
         print(f"Inference results confidence threshold: {confidence_threshold:.2f}")
 
     # 3. Load and filter label box results
-    lblres_transects = pd.read_csv(paths["lbl_box_results"], index_col=0)
+    lblres_transects = pd.read_csv(paths["lbl_box_results"], index_col=0, low_memory=False)
     lblres_transects = lblres_transects[lblres_transects.Filename.isin(usable_images)].copy()
 
     # 4. Load and filter polygon assessment
@@ -250,12 +248,17 @@ def generate_report(metrics: Dict[str, Any], data: Dict[str, Any], paths: Dict[s
     try:
         # Pass the path to trigger saving inside the Transects method
         Transects.plot_biomass_comparison_moving_average(
-            infer_transect=infer_biomass_df, 
-            lbl_transect=lblbox_biomass_df if not lblbox_biomass_df.empty else None, 
-            poly_transect=lblpoly_biomass_df if not lblpoly_biomass_df.empty else None, 
-            moving_average_window=100,
+            primary_transect=infer_biomass_df,
+            primary_lbl="Inferred Biomass",
+            primary_window=100,
+            secondary_transect=lblbox_biomass_df if not lblbox_biomass_df.empty else None, 
+            secondary_lbl="Labeled Box Biomass" if not lblbox_biomass_df.empty else None,
+            secondary_window=100,
+            tertiary_transect=lblpoly_biomass_df if not lblpoly_biomass_df.empty else None, 
+            tertiary_lbl="Labeled Polygon Biomass" if not lblpoly_biomass_df.empty else None,
+            tertiary_window=100,
             save_path=paths["transect_folder"] / MA_PLOT_FILENAME # <-- Pass path to trigger save
-        )
+        )       
         ma_plot_saved = True
         print(f"Moving average plot saved to: {MA_PLOT_FILENAME}")
     except Exception as e:
@@ -312,23 +315,25 @@ def main():
     
     try:
         # 1. Configuration
-        paths = load_config(args.test_run, args.collect_id, args.confidence_threshold, args.weights_path)
-        # 2. Print Inference Command (Optional, for reference)
         confidence_threshold = args.confidence_threshold
-        command = (
-            f"python scripts/runResults.py "
-            f"--img_directory '{paths['img_directory'].as_posix()}' "
-            f"--weights '{paths['weights'].as_posix()}' "
-            f"--op_table '{paths['op_table'].as_posix()}' "
-            f"--metadata '{paths['metadata'].as_posix()}' "
-            f"--output_name '{args.test_run}' "
-            f"--has_labels "
-            f"--results_confidence {confidence_threshold}"
-        )
-        print("\nInference Run Command Reference:\n", command, "\n")
+        collect_id = args.collect_id
+        run_path = args.test_run
+        paths = load_config(run_path, collect_id, confidence_threshold)
         
+        # 2. Run results for the confidence threshold (no inference)
+        if args.run_results:
+            command = [
+                sys.executable,
+                os.path.join(os.path.dirname(__file__), "runResults.py"),
+                "--op_table", str(paths["op_table"]),
+                "--metadata", str(paths["metadata"]),
+                "--output_name", run_path,
+                "--has_labels",
+                "--results_confidence", str(confidence_threshold)
+            ]
+            subprocess.run(command, shell=True, check=True)
         # 3. Data Loading and Filtering
-        data = load_and_filter_data(paths, args.collect_id)
+        data = load_and_filter_data(paths, collect_id, confidence_threshold)
         # 4. Metric Calculation
         metrics = calculate_metrics(data)
 

@@ -7,8 +7,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run YOLO batch prediction and results script.")
     parser.add_argument("--img_directory", required=False, help="Path to image directory")
     parser.add_argument("--img_list_csv", required=False, help="Path to image list csv")
-    parser.add_argument("--weights", required=True, help="Path to YOLO model weights")
-    parser.add_argument("--op_table", required=True, help="Path to OP_TABLE.xlsx")
+    parser.add_argument("--weights", required=False, default=r"path\to\model_weights.pt", help="Path to YOLO model weights")
+    parser.add_argument("--op_table", default=r"Z:\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx", help="Path to OP_TABLE.xlsx")
     parser.add_argument("--metadata", required=True, help="Path to meta.csv")
     parser.add_argument("--output_name", required=True, help="Output name for results")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
@@ -36,11 +36,11 @@ def main():
         # 🌟 NEW: Conditionally add the directory OR the CSV path
     if args.img_directory is not None:
         cmd.extend(["--img_directory", args.img_directory])
-    
-    elif args.image_list_csv is not None:
-        # Note: The variable name is 'image_list_csv' in the function signature, 
-        # but corresponds to the argument '--img_list_csv'
-        cmd.extend(["--img_list_csv", args.image_list_csv])
+    elif args.img_list_csv is not None:
+        cmd.extend(["--img_list_csv", args.img_list_csv])
+    else:
+        cmd.extend(["--img_directory", "default_directory"])  # Provide a default or handle this case appropriately
+
     if args.run_predict:
         cmd.append("--run_predict")
     if args.has_labels:

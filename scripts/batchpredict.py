@@ -54,8 +54,11 @@ def return_img_list(args):
         assert len(test_images) > 0, "No images found in directory"
     elif args.img_list_csv:
         print("Using img_list_csv")
-        with open(args.img_list_csv, 'r') as f:
+        # --- Change made here ---
+        # Use 'utf-8-sig' to automatically handle and remove the Byte Order Mark (BOM)
+        with open(args.img_list_csv, 'r', encoding='utf-8-sig') as f:
             test_images = f.read().splitlines()
+        # ------------------------
         assert len(test_images) > 0, "No image paths found in csv"
     else:
         raise ValueError("Must provide an image directory or a path to a csv listing filepaths of images")

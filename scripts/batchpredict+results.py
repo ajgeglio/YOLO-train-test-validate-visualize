@@ -30,30 +30,36 @@ def parse_arguments():
     parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
     parser.add_argument('--results_confidence', default=0.2, type=float, help='Minimum confidence in results output table')
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
+    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
+    parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
     return parser.parse_args()
 
-def run_predict(img_directory, img_list_csv, weights, output_name, batch_size, start_batch, conf_thresh, has_labels, overlays):
+def run_predict(args):
+    # img_directory, img_list_csv, weights, output_name, batch_size, start_batch, conf_thresh, has_labels, plot, use_img_size
     """Run the YOLO prediction script with the specified parameters."""
     cmd = [
         sys.executable,
         os.path.join(os.path.dirname(__file__), "batchpredict.py"),
-        "--weights", weights,
+        "--weights", args.weights,
         "--output_name", output_name,
-        "--batch_size", str(batch_size),
-        "--confidence", str(conf_thresh),
-        "--start_batch", str(start_batch)
+        "--batch_size", str(args.batch_size),
+        "--confidence", str(args.confidence),
+        "--start_batch", str(args.start_batch)
     ]
     # 🌟 NEW: Conditionally add the directory OR the CSV path
-    if img_directory is not None:
-        cmd.extend(["--img_directory", img_directory])
-    elif img_list_csv is not None:
-        cmd.extend(["--img_list_csv", img_list_csv])
+    if args.img_directory is not None:
+        cmd.extend(["--img_directory", args.img_directory])
+    elif args.img_list_csv is not None:
+        cmd.extend(["--img_list_csv", args.img_list_csv])
     else:
         cmd.extend(["--img_directory", "default_directory"])  # Provide a default or handle this case appropriately
-
-    if has_labels:
+    if args.use_img_size:
+        cmd.extend(["--use_img_size"])
+    if args.resume:
+        cmd.extend(["--resume"])
+    if args.has_labels:
         cmd.append("--has_labels")
-    if overlays:
+    if args.plot:
         cmd.append("--plot")
 
     # This print statement will go to the log file (and potentially the terminal)
@@ -64,21 +70,19 @@ def run_predict(img_directory, img_list_csv, weights, output_name, batch_size, s
     # must be redirected, which we handle in the __main__ block.
     subprocess.run(cmd, check=True)
     
-def output_YOLO_results(meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh, find_closest=False):
-    # This is a placeholder since the YOLOResults class is not provided.
-    # In a real scenario, this would import and run.
-    print(f"Processing results with confidence: {conf_thresh}")
+def output_YOLO_results(args, yolo_infer_path, find_closest=False):
+    print(f"Processing results with confidence: {args.confidence}")
 
-    output = YOLOResults(meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh)
+    output = YOLOResults(args.metadata, yolo_infer_path, args.substrate, args.op_table, args.confidence)
     yolores = output.yolo_results(find_closest=find_closest)
     return yolores
 
-def output_LBL_results(meta_path, yolo_lbl_path, substrate_path, op_path, find_closest=False):
+def output_LBL_results(args, yolo_lbl_path, find_closest=False):
     # This is a placeholder since the LBLResults class is not provided.
     # In a real scenario, this would import and run.
     print(f"Processing results for labels")
 
-    output = LBLResults(meta_path, yolo_lbl_path, substrate_path, op_path)
+    output = LBLResults(args.metadata, yolo_lbl_path, args.substrate, args.op_table)
     lblres = output.lbl_results(find_closest=find_closest)
     return lblres
 
@@ -100,25 +104,15 @@ def main():
 
     # Run the prediction
     if args.run_predict:
-        run_predict(
-            img_directory=args.img_directory,
-            img_list_csv=args.img_list_csv,
-            weights=args.weights,
-            output_name=output_name,
-            batch_size=args.batch_size,
-            has_labels=args.has_labels,
-            overlays=args.plot,
-            conf_thresh=args.confidence,
-            start_batch=args.start_batch
-        )
+        run_predict(args)
 
     # Process results
     yolo_infer_path = os.path.join(run_path, "predictions.csv")
-    results_confidence = args.results_confidence
-
-    yolores = output_YOLO_results(args.metadata, yolo_infer_path, args.substrate, args.op_table, results_confidence, find_closest=False)
+  
+    yolores = output_YOLO_results(args, yolo_infer_path, find_closest=False)
     
     # Save results
+    results_confidence = args.results_confidence
     out_path = os.path.join(run_path, f"inference_results_{results_confidence:04.2f}.csv")
     print(f"saving YOLO results to csv: {out_path}")
     yolores.to_csv(out_path, index=False)
@@ -126,17 +120,18 @@ def main():
     if args.has_labels:
         # fndf_path = os.path.join(run_path, "false_negatives.csv")
         lbl_pth = os.path.join(run_path, "labels.csv")
-        lbl_report = output_LBL_results(args.metadata, lbl_pth, args.substrate, args.op_table, find_closest=False)
+        lbl_report = output_LBL_results(args, lbl_pth, find_closest=False)
         out_path = os.path.join(run_path, f"label_box_results.csv")
         print(f"saving label box results to csv: {out_path}")
         lbl_report.to_csv(out_path, index=False)
     print(f"\n{'='*50}\nRUN END TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'='*50}\n\n")
+
 if __name__ == "__main__":
     
     # Parse arguments early to get output_name and run_path before logging
-    temp_args = parse_arguments()
-    output_name = temp_args.output_name
-    run_path = os.path.join("output", "test_runs" if temp_args.has_labels else "inference", output_name)
+    args = parse_arguments()
+    output_name = args.output_name
+    run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", output_name)
     os.makedirs(run_path, exist_ok=True) # Ensure the directory exists
     
     # Define log file path
@@ -148,7 +143,7 @@ if __name__ == "__main__":
     original_stderr = sys.stderr
 
     # Check the --supress_log flag to determine if terminal output should be redirected
-    if not temp_args.supress_log:
+    if not args.supress_log:
         # If not suppressed, tee the output (write to both file and terminal)
         # This requires a custom class or using a standard shell redirect
         # For simplicity and robustness, we will redirect everything to the file,

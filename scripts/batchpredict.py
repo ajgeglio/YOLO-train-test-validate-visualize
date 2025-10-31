@@ -32,6 +32,8 @@ def parse_arguments():
     parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
     parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
     parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
+    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
+    parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     parser.add_argument('--sahi_tiled', action="store_true", help='Enable SAHI tiled inference')
     parser.add_argument('--tile_size', default=1024, type=int, help='Tile size for SAHI tiled inference')
@@ -117,6 +119,8 @@ def main():
     # Load test images and labels
     image_list = return_img_list(args)
     label_list = return_lbl_list(args, image_list) if args.has_labels else None
+    imh, imw = Utils.get_shape_pil(image_list[0])
+
 
     # Verify images if required
     if args.verify:
@@ -125,6 +129,13 @@ def main():
     # Initialize YOLO model
     batch_size = args.batch_size
     start_batch = args.start_batch
+    if args.resume:
+        # 1. Determine which original files have been completed
+        # Assumes you have selected the same batch size in your resume run as the previous run
+        im_complete = len(pd.read_csv(os.path.join(run_path, "predictions.csv")).Filename.unique())
+        batches_complete = im_complete // batch_size
+        print(f"Resuming: at batch {batches_complete} based on predictions.py.")
+        start_batch = batches_complete
 
     # Prepare CSV files for predictions and labels
     pred_csv_path = os.path.join(run_path, "predictions.csv")
@@ -178,6 +189,8 @@ def main():
         else:
             model = YOLO(args.weights)
             image_size = model.ckpt["train_args"]["imgsz"]
+            if args.use_img_size:
+                image_size = imh, imw
             results = model(
                 imgs,
                 stream=True,

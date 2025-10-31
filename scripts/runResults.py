@@ -18,7 +18,9 @@ def main():
     parser.add_argument("--has_labels", action="store_true", help="Whether labels are present")
     parser.add_argument("--run_predict", action="store_true", help="Whether to run prediction")
     parser.add_argument("--plot", action="store_true", help="Whether to plot overlays")
-    parser.add_argument("--substrate_path", help="Optional substrate path")  # Uncomment if needed
+    parser.add_argument("--substrate_path", help="Optional substrate path") 
+    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
+    parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
     args = parser.parse_args()
 
     cmd = [
@@ -33,14 +35,17 @@ def main():
         "--results_confidence", str(args.results_confidence),
         "--start_batch", str(args.start_batch),
     ]
-        # 🌟 NEW: Conditionally add the directory OR the CSV path
+    # Conditionally add the directory OR the CSV path
     if args.img_directory is not None:
         cmd.extend(["--img_directory", args.img_directory])
     elif args.img_list_csv is not None:
         cmd.extend(["--img_list_csv", args.img_list_csv])
     else:
         cmd.extend(["--img_directory", "default_directory"])  # Provide a default or handle this case appropriately
-
+    if args.use_img_size:
+        cmd.extend(["--use_img_size"])
+    if args.resume:
+        cmd.extend(["--resume"])
     if args.run_predict:
         cmd.append("--run_predict")
     if args.has_labels:

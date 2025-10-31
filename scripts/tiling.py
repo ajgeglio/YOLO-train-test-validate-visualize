@@ -16,6 +16,7 @@ def parse_arguments():
     parser.add_argument('--tile_size_y', type=int, default=1307)
     parser.add_argument('--overlap_x', type=int, default=460)
     parser.add_argument('--overlap_y', type=int, default=461)
+    parser.add_argument('--resume', action="store_true", help="resume tiling if interrupted")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--images_only', action="store_true", help='Only process images.')
     group.add_argument('--labels_only', action="store_true", help="Only process labels.")
@@ -72,6 +73,7 @@ def main():
 
     image_paths, label_paths = get_file_paths(args)
 
+
     if not image_paths and not label_paths:
         print("Error: No image or label files found. Exiting.")
         return
@@ -88,6 +90,62 @@ def main():
         os.makedirs(tiled_image_path, exist_ok=True)
     if not args.images_only:
         os.makedirs(tiled_label_path, exist_ok=True)
+
+    if args.resume:
+        # 1. Determine which original files have been completed
+        if not args.labels_only:
+            # We must use the tiled image directory to check for completion
+            tiles_complete_w_ext = os.listdir(tiled_label_path)
+        elif not args.images_only:
+            # If in labels_only mode, we must use the tiled label directory
+            tiles_complete_w_ext = os.listdir(tiled_label_path)
+        else:
+            # Should not happen if not args.labels_only is checked above, but safe to exclude
+            print("Cannot resume in images_only mode without prior label processing.")
+            return
+
+        # Rsplit works correctly for 'basename_x_y.ext'
+        # basenames_complete will hold the original full basename: 'PI_1718720450_372_Iver3069'
+        basenames_complete_tiled = list(map(lambda x: x.rsplit('_', 2)[0], tiles_complete_w_ext))
+        
+        # 2. Extract unique completed basenames
+        # The set() operation removes duplicates (from multiple tiles per image)
+        unique_completed_basenames = set(basenames_complete_tiled)
+        
+        # 3. Remove the last basename, as it is likely only partially tiled (the source of the interruption)
+        # Find the max basename to ensure we remove the one that was actively processing
+        # Note: This assumes the tiled filenames are still processing in alphabetical order.
+        if unique_completed_basenames:
+            last_processed_basename = max(unique_completed_basenames)
+            unique_completed_basenames.remove(last_processed_basename)
+
+        # 4. Determine Remaining Original Paths
+        
+        # Get the set of basenames from ALL original paths
+        original_image_basenames = {os.path.splitext(os.path.basename(p))[0]: p for p in image_paths}
+        original_label_basenames = {os.path.splitext(os.path.basename(p))[0]: p for p in label_paths}
+
+        # Calculate the basenames that still need tiling
+        remaining_basenames = set(original_image_basenames.keys()).difference(unique_completed_basenames)
+
+        # Rebuild image_paths and label_paths by filtering the original lists.
+        # This preserves the original file extensions and full file paths (crucial for --list_file)
+        
+        # For images:
+        if image_paths:
+            # Filter the original image_paths list to keep only those that are in remaining_basenames
+            image_paths = [original_image_basenames[bn] for bn in remaining_basenames if bn in original_image_basenames]
+
+        # For labels:
+        if label_paths:
+            # Filter the original label_paths list to keep only those that are in remaining_basenames
+            label_paths = [original_label_basenames[bn] for bn in remaining_basenames if bn in original_label_basenames]
+            
+        # Re-sort to maintain order for paired processing
+        image_paths.sort()
+        label_paths.sort()
+        
+        print(f"Resuming: {len(image_paths)} images and {len(label_paths)} labels remaining to process.")
         
     # Prepare the iterator for the main loop
     if args.labels_only:

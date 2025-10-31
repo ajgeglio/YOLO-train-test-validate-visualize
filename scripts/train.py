@@ -31,6 +31,11 @@ def parse_arguments():
     parser.add_argument('--epochs', default=500, type=int, help='Maximum number of training epochs')
     parser.add_argument('--patience', default=16, type=int, help='Number of epochs to wait after the best validation loss')
     parser.add_argument('--img_size', default=2048, type=int, help='Maximum image dimension')
+    parser.add_argument('--lr0', default=0.01, type=float, help="The starting learning rate, default same as Ultralytics")
+    parser.add_argument('--lrf', default=0.01, type=float, help="Final learning rate as a fraction of the initial rate. The final LR will be lr0xlrf=0.01x0.01=0.0001.")
+    parser.add_argument('--warmup_epochs', default=3, type=int, help="Number of epochs for the linear learning rate warmup phase.")
+    parser.add_argument('--warmup_momentum', default=0.8, type=float, help="Initial momentum during the warmup phase.")
+    parser.add_argument('--optimizer', default='auto', help="Automatically selects the optimizer (often defaults to SGD for detection/segmentation).")
     parser.add_argument('--note', default="training run", help='Additional notes to append on the training run')
     parser.set_defaults(resume=False)
     return parser.parse_args()
@@ -101,9 +106,13 @@ def main():
         patience=args.patience,
         val=True,
         single_cls=True,
-        optimizer='auto',
         cache=False,
-        exist_ok=True
+        exist_ok=True,
+        optimizer=args.optimizer,
+        lr0 = args.lr0,
+        lrf = args.lrf,
+        warmup_epochs = args.warmup_epochs,
+        warmup_momentum = args.warmup_momentum,
     )
 
     # Print total training time

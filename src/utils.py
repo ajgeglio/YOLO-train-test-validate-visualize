@@ -220,19 +220,6 @@ class Utils:
         return df
 
     @staticmethod
-    def move_files_lst(orig_pth, new_pth, ext = ".txt"):
-        move_df = Utils.make_move_df(orig_pth, new_pth, ext = ".txt")
-        i = 0
-        k = 0
-        l = len(move_df)
-        for src, dst in zip(move_df.original_path, move_df.new_path):
-            if not os.path.exists(dst):
-                shutil.move(src,dst)
-                k+=1
-            i+=1
-            print("file", i,"/",l,"new items found", k, end=" \r")
-
-    @staticmethod
     def make_timestamp_folder():
         t = datetime.datetime.now()
         timestring = f"{t.year:02d}{t.month:02d}{t.day:02d}-{t.hour:02d}{t.minute:02d}{t.second:02d}"
@@ -293,7 +280,7 @@ class Utils:
         n_files = len(pth_lst)
         for i, pth in enumerate(pth_lst):
             i += 1
-            if pth == pth:
+            if os.path.exists(pth):
                 if overwrite == True:
                     nm = os.path.basename(pth)
                     new_pth = os.path.join(dest, nm)
@@ -329,7 +316,7 @@ class Utils:
             i += 1
 
     @staticmethod
-    def get_shape_pil(self, fname):
+    def get_shape_pil(fname):
         try:
             img=PIL.Image.open(fname)
         except: img = PIL.Image.new("RGB", (10,10))
@@ -527,34 +514,190 @@ class Utils:
         Utils.write_list_txt(matched_labels, os.path.join(out_folder, "labels.txt"))
 
     @staticmethod
-    def list_tiled_set(set_image_names, all_tiled_image_paths, all_tiled_label_paths):
+    def convert_tile_img_pth_to_basename(img_path):
+            # Extract the filename from the tiled image path (e.g., 'PI_1718720450_372_Iver3069_0_0.png')
+            tiled_filename = os.path.basename(img_path)
+            # Extract the *original* basename from the tiled filename.
+            # This removes the tile coordinates ('_0_0') and the extension ('.png').
+            # Rsplit is correct here: ('PI_1718720450_372_Iver3069_0_0.png').rsplit('_', 2)[0] 
+            # yields 'PI_1718720450_372_Iver3069'
+            tiled_basename = tiled_filename.rsplit('_', 2)[0]
+            return tiled_basename
+    
+    @staticmethod
+    def get_all_img_lbl_pths(BASE_DIR = "D:\\datasets\\tiled", SPLITS = ["train", "test", "validation"]):
+        # 1. Define base directories and extensions
+        
+        IMAGE_EXTENSIONS = ["*.png", "*.jpg"]
+
+        # 3. Use list comprehensions and os.path.join for cleaner path generation
+        all_image_paths = []
+        all_label_paths = []
+
+        if SPLITS == None:
+            image_dir = os.path.join(BASE_DIR, "images")
+            label_dir = os.path.join(BASE_DIR, "labels")
+        else:            
+            for split in SPLITS:
+                image_dir = os.path.join(BASE_DIR, split, "images")
+                label_dir = os.path.join(BASE_DIR, split, "labels")
+
+        # Aggregate image paths for multiple extensions
+        for ext in IMAGE_EXTENSIONS:
+            all_image_paths.extend(glob.glob(os.path.join(image_dir, ext)))
+
+        # Aggregate label paths (assuming only '*.txt')
+        all_label_paths.extend(glob.glob(os.path.join(label_dir, "*.txt")))
+
+        # 4. Assert and print checks
+        print(f"Total images found in {image_dir}: {len(all_image_paths)}")
+        print(f"Total labels found: {len(all_label_paths)}")
+        assert len(all_image_paths) == len(all_label_paths), "Mismatch between image and label counts."
+        
+        return all_image_paths, all_label_paths
+    
+    @staticmethod
+    def check_txt_file_vs_images(tile_img_list_path, tile_img_dir):
         """
-        Creates a test set of images that correspond to the image names input.
+        Performs an integrity check by comparing image basenames (without extensions) 
+        found in the 'tiled/images' folder against those listed in 'tiled/images.txt'.
+        
+        Returns True if the sets of basenames match exactly, False otherwise.
+        """
+        name = os.path.dirname(tile_img_dir)
+        print(f"--- Checking Batch: {name} (Ignoring Extensions) ---")
+
+        # Step 1: Check for existence of the master list file
+        if not os.path.exists(tile_img_list_path):
+            print(f"Integrity Check FAILED: Master list file not found at: {tile_img_list_path}")
+            return False
+            
+        # Helper function to remove the extension (e.g., 'file.jpg' -> 'file')
+        def strip_extension(filename):
+            return os.path.splitext(filename)[0]
+
+        # Step 2: Get basenames (NO EXTENSION) of images present in the folder
+        image_paths_on_disk = glob.glob(os.path.join(tile_img_dir, "*.png")) + \
+                            glob.glob(os.path.join(tile_img_dir, "*.jpg"))
+                            
+        # Convert full paths to a set of basenames without extensions
+        tiled_imgs_basenames_no_ext = {
+            strip_extension(os.path.basename(f)) for f in image_paths_on_disk
+        }
+        
+        # Step 3: Get basenames (NO EXTENSION) of images listed in the text file
+        existing_tiled_txt = Utils.read_list_txt(tile_img_list_path)
+        existing_tiled_txt_basenames_no_ext = {
+            strip_extension(os.path.basename(x)) for x in existing_tiled_txt
+        }
+
+        # Step 4: Perform the set difference comparison
+        in_txt_not_in_folder = existing_tiled_txt_basenames_no_ext.difference(tiled_imgs_basenames_no_ext)
+        in_folder_not_in_txt = tiled_imgs_basenames_no_ext.difference(existing_tiled_txt_basenames_no_ext)
+        
+        # Step 5: Report results
+        if not in_txt_not_in_folder and not in_folder_not_in_txt:
+            print(f"Integrity Check PASSED: {len(tiled_imgs_basenames_no_ext)} core files match the list.")
+            return True
+        else:
+            print(f"Integrity Check FAILED for {name}!")
+            print(f"   {len(in_txt_not_in_folder)} basenames in text file not found in folder.")
+            print(f"   {len(in_folder_not_in_txt)} basenames in folder not listed in text file.")
+            
+            # Print a few examples for debugging
+            if in_txt_not_in_folder:
+                print(f"  Example text file exclusives: {list(in_txt_not_in_folder)[:3]}")
+            if in_folder_not_in_txt:
+                print(f"  Example folder exclusives: {list(in_folder_not_in_txt)[:3]}")
+            return False
+
+    @staticmethod
+    def zip_folder(folder_path, archive_name=None):
+        """
+        Zips a specified folder path, placing the resulting ZIP file 
+        in the parent directory of the folder.
+
+        This function is generalized and can be used on any directory structure.
 
         Args:
-            original_test_image_paths (list): List of image paths from the original test set.
-            all_tiled_image_paths (list): List of all image paths from the entire tiled set.
-            all_tiled_label_paths (list): List of all label paths from the entire tiled set.
+            folder_path (str): The full path to the directory to be zipped.
+            archive_name (str, optional): The desired base name for the output archive
+                                        (e.g., 'my_data_archive'). If None, the 
+                                        ZIP file is named after the folder being zipped.
 
         Returns:
-            tuple: A tuple containing lists of matched tiled image paths and label paths.
+            str or None: The full path to the created ZIP file, or None if zipping fails.
         """
         
+        # 1. Input Validation
+        if not os.path.isdir(folder_path):
+            print(f"Error: Folder not found or is not a directory: {folder_path}")
+            return None
+
+        # 2. Path Setup for shutil.make_archive
+        
+        # Get the parent directory (this will be the root_dir)
+        root_dir = os.path.dirname(folder_path)
+        
+        # Get the name of the folder being zipped (this will be the base_dir)
+        base_dir = os.path.basename(folder_path)
+        
+        # Determine the name of the resulting archive file
+        if archive_name is None:
+            archive_name = base_dir
+
+        # The full path and base name for the archive file (without the .zip extension)
+        # The archive will be placed in root_dir
+        archive_base_name = os.path.join(root_dir, archive_name)
+        
+        print(f"Zipping content of '{base_dir}' into '{archive_base_name}.zip'")
+        
+        # 3. Zipping Logic
+        try:
+            # shutil.make_archive zips the directory 'base_dir' found inside 'root_dir'
+            # and names the resulting archive using 'archive_base_name'.
+            zip_filepath = shutil.make_archive(
+                base_name=archive_base_name, 
+                format='zip', 
+                root_dir=root_dir, 
+                base_dir=base_dir
+            )
+            print(f"Successfully created: {zip_filepath}")
+            return zip_filepath
+        except Exception as e:
+            print(f"Error zipping folder '{folder_path}': {e}")
+            return None
+
+    @staticmethod
+    def list_tiled_set(full_image_paths, all_tiled_image_paths, all_tiled_label_paths):
+        """
+        Creates a test set of images that correspond to the image names input.
+        """
+        # Step 1: Extract and clean basenames from the full image paths
+        # Create a set of basenames (e.g., 'PI_1718720450_372_Iver3069') for fast lookup.
+        full_image_basenames = set()
+        for full_path in full_image_paths:
+            # Get the filename (e.g., 'PI_1718720450_372_Iver3069.png')
+            basename_with_ext = os.path.basename(full_path)
+            # Remove the extension (e.g., '.png')
+            basename = os.path.splitext(basename_with_ext)[0]
+            full_image_basenames.add(basename) 
+            # For your data, this set will contain:
+            # {'PI_1718720450_372_Iver3069', 'PI_1718720490_371_Iver3069', ...}
 
         tiled_set_images = []
         tiled_set_labels = []
 
         # Step 2: Iterate through all tiled paths and match them to the original basenames
-        # This is the core matching step. We iterate through the tiled set once.
         for img_path, lbl_path in zip(all_tiled_image_paths, all_tiled_label_paths):
-            # Extract the basename from the tiled image path.
-            tiled_basename = os.path.basename(img_path).rsplit('_', 2)[0]
-            
-            # Check if this basename exists in our set of original basenames.
-            if tiled_basename in set_image_names:
+
+            tiled_basename = Utils.convert_tile_img_pth_to_basename(img_path)
+            # Check if this cleaned basename exists in our set of original basenames.
+            if tiled_basename in full_image_basenames: # <-- THE CRITICAL CHANGE
                 tiled_set_images.append(img_path)
                 tiled_set_labels.append(lbl_path)
         
+        # After the fix, for your provided data, len(tiled_images) will be 6.
         return tiled_set_images, tiled_set_labels
     
     @staticmethod

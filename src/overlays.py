@@ -255,17 +255,20 @@ class Overlays:
         return msk_img
     
     @staticmethod
-    def disp_lbl_bbox(img_path, lbl_path):
-        assert os.path.basename(img_path).split(".")[0] ==  os.path.basename(lbl_path).split(".")[0]
-        img_array = cv2.imread(img_path)[:, :, ::-1]
-        img = PIL.Image.fromarray(img_array)
-        im_h, im_w = img_array.shape[0], img_array.shape[1]
+    def disp_lbl_bbox(img_path, lbl_path, label_only=False, imw=None, imh=None):
+        assert os.path.basename(img_path).split(".")[0] == os.path.basename(lbl_path).split(".")[0]
+        if label_only:
+            img = PIL.Image.new("RGB", (imw, imh), color="white")
+        else:
+            img_array = cv2.imread(img_path)[:, :, ::-1]
+            img = PIL.Image.fromarray(img_array)
+            imh, imw = img_array.shape[0], img_array.shape[1]
         draw = PIL.ImageDraw.Draw(img)
         s=6
         try:
             df = pd.read_csv(lbl_path, delimiter=' ', header=None)
             for index, row in df.iterrows():
-                cls, x, y, w, h = row[0], row[1]*im_w, row[2]*im_h, row[3]*im_w, row[4]*im_h
+                cls, x, y, w, h = row[0], row[1]*imw, row[2]*imh, row[3]*imw, row[4]*imh
                 # print(x,y,w,h)
                 x1 = x - w/2
                 y1 = y - h/2

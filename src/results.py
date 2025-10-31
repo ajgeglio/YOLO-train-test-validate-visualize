@@ -29,7 +29,7 @@ class YOLOResults:
         infer = None
         try:
             infer = pd.read_csv(yolo_infer_path, index_col=0)
-            infer = infer.rename(columns={"imw": "imw_infer", "imh": "imh_infer"})
+            infer = infer.rename(columns={"imw": "imw_p", "imh": "imh_p"})
             infer["conf"] = infer["conf"].astype(float)
             infer = infer[infer["conf"] >= 0.099] # Self-imposed threshold for confidence to shorten results output
             print("Total objects in inference", infer.shape)
@@ -124,9 +124,9 @@ class YOLOResults:
                     discrepant_images = list(set(im_inferred).difference(set(im_in_meta)))
                     f.write('\n'.join(discrepant_images))
             try:
-                if df_combined.imw.all() != df_combined.imw_infer.all():
+                if df_combined.imw.all() != df_combined.imw_p.all():
                     print("Warning: Image width metadata does not match inferred image width.")
-                if df_combined.imh.all() != df_combined.imh_infer.all():
+                if df_combined.imh.all() != df_combined.imh_p.all():
                     print("Warning: Image height metadata does not match inferred image height.")
             except Exception as e:
                 print("Unable to check imw/imh metadata and inference consistency:", e)
@@ -190,7 +190,7 @@ class YOLOResults:
         and computes fish weights.
         """
         yolores = self.clean_yolo_results()
-        if not yolores[["Latitude", "Longitude"]].isna().all().all():
+        if not yolores["DistanceToBottom_m"].isna().all():
             yolores = ResultsUtils.area_and_pixel_size(yolores)
             yolores = ResultsUtils.calc_fish_wt(yolores)
             yolores = ResultsUtils.calc_fish_wt_corr(yolores)
@@ -339,7 +339,7 @@ class LBLResults:
     def clean_lbl_results(self, **kwargs):
         df_combined = self.combine_meta_lbl_substrate(**kwargs)
         columns_ = [
-            "Time_s", "Filename", "MISSION_NAME", "LAKE_NAME", "Fish_lbl_ID", "x", "y", "w", "h", "conf", "conf_pass",
+            "Time_s", "Filename", "MISSION_NAME", "LAKE_NAME", "Fish_lbl_ID", "cls", "x", "y", "w", "h", "conf", "conf_pass",
             "imw", "imh", "detect_id", "ground_truth_id", "Latitude", "Longitude",
             "DepthFromSurface_m", "DistanceToBottom_m", "Speed_kn", "Time_UTC", "image_path",
             "CollectID", "PS_mm", "ImageArea_m2", "year", "month", "day", "time",
@@ -392,7 +392,7 @@ class LBLResults:
         and computes fish weights.
         """
         lblres = self.clean_lbl_results()
-        if not lblres[["Latitude", "Longitude"]].isna().all().all():
+        if not lblres["DistanceToBottom_m"].isna().all():
             lblres = ResultsUtils.area_and_pixel_size(lblres)
             lblres = ResultsUtils.calc_fish_wt(lblres)
             lblres = ResultsUtils.calc_fish_wt_corr(lblres)

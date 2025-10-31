@@ -1,6 +1,6 @@
 import os
 from iou import *
-from results import LBLResults
+from results import LBLResults, YOLOResults
 from utils import Utils
 import datetime
 import matplotlib.pyplot as plt
@@ -54,16 +54,26 @@ class Reports:
 
     @staticmethod
     def output_LBL_results(meta_path, yolo_lbl_path, substrate_path, op_path, find_closest=False):
-        # This is a placeholder since the LBLResults class is not provided.
-        # In a real scenario, this would import and run.
         print(f"Processing results for labels")
         output = LBLResults(meta_path, yolo_lbl_path, substrate_path, op_path)
         lblres = output.lbl_results(find_closest=find_closest)
         return lblres
+    
+    @staticmethod
+    def output_YOLO_results(meta_path, yolo_infer_path, substrate_path, op_path, confidence, find_closest=False):
+        print(f"Processing results with confidence: {confidence}")
+        output = YOLOResults(meta_path, yolo_infer_path,substrate_path, op_path, confidence)
+        yolores = output.yolo_results(find_closest=find_closest)
+        return yolores
 
     @staticmethod
     def scores_df(df_lbls, df_pred, iou_tp=0.5):
+        # filter 
         n_ground_truth = len(df_lbls)
+
+        #filter bad prediction boxes
+        df_pred = df_pred[df_pred.h>0]
+        df_pred = df_pred[df_pred.w>0]
 
         # 1. Use a LEFT merge to preserve ALL predictions (df_pred)
         # Unmatched predictions will have NaN values for label-related columns.
@@ -123,6 +133,9 @@ class Reports:
 
     @staticmethod
     def return_fn_df(df_lbls, df_pred, iou_tp=0.5, conf_thresh=0.1):
+        #filter bad prediction boxes
+        df_pred = df_pred[df_pred.h>0]
+        df_pred = df_pred[df_pred.w>0]
         # Merge labels and predictions based on Filename and confidence threshold
         df_merge = df_lbls.merge(df_pred[df_pred.conf >= conf_thresh], on='Filename', suffixes=('_l', '_p'), how='left')
         # Calculate pixel distance

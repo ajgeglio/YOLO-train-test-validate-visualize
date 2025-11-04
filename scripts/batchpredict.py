@@ -36,8 +36,8 @@ def parse_arguments():
     parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     parser.add_argument('--sahi_tiled', action="store_true", help='Enable SAHI tiled inference')
-    parser.add_argument('--tile_size', default=1024, type=int, help='Tile size for SAHI tiled inference')
-    parser.add_argument('--tile_overlap', default=0.2, type=float, help='Tile overlap ratio for SAHI tiled inference')
+    parser.add_argument('--tile_size', default=[1307, 1672], type=int, help='Tile size [slice_height, slice_widh] for SAHI tiled inference')
+    parser.add_argument('--tile_overlap', default=[0.35, 0.275], type=float, help='Tile overlap ratio [overlap_height_ratio, overlap_width_ratio] for SAHI tiled inference ABISS1 default = [0.335, 0.275]')
     return parser.parse_args()
 
 def setup_environment():
@@ -167,13 +167,24 @@ def main():
             )
             for img_path in imgs:
                 image = read_image_as_pil(img_path)
+                imw, imh = image.size
+                if (imh, imw) == (3000, 4096):
+                    tile_size=[1307, 1672]
+                    tile_overlap=[0.35, 0.275]
+                elif (imh, imw) == (2176, 4096):
+                    tile_size=[1307, 1672]
+                    tile_overlap=[0.335, 0.275]
+                else:
+                    tile_size=args.tile_size
+                    tile_overlap=args.tile_overlap
+                    
                 result = get_sliced_prediction(
                     image,
                     model,
-                    slice_height=args.tile_size,
-                    slice_width=args.tile_size,
-                    overlap_height_ratio=args.tile_overlap,
-                    overlap_width_ratio=args.tile_overlap,
+                    slice_height=tile_size[0],
+                    slice_width=tile_size[1],
+                    overlap_height_ratio=tile_overlap[0],
+                    overlap_width_ratio=tile_overlap[1],
                     postprocess_type="NMS",
                     verbose=True,
                 )
@@ -208,7 +219,7 @@ def main():
                     plots_folder, args.plot, args.has_labels
                 )
     # Finalize predictions and labels
-    pred = pd.read_csv(pred_csv_path, index_col=0)
+    pred = pd.read_csv(pred_csv_path, index_col=0, low_memory=False)
     lbl = pd.read_csv(lbl_csv_path, index_col=0) if args.has_labels else None
     save_predictions_to_csv(pred, pred_csv_path)
     

@@ -181,6 +181,22 @@ class YOLOResults:
         # yolores["detect_id"] = yolores["detect_id"].fillna()
         yolores = yolores.reset_index(drop=True)
         return yolores
+    
+    def result_filt_g(df):
+        return df[((df.box_DL_weight_g_corr<0.1) | (df.box_DL_weight_g_corr>80)) & (df.conf>0)]
+    
+    def filter_based_on_weight(self, yolores, yolo_infer_path):
+        filt_predictions = YOLOResults.result_filt_g(yolores)
+        yolores_filtered = yolores.drop(filt_predictions.index)
+        filt_detect_ids = filt_predictions.detect_id
+        pred_df = pd.read_csv(yolo_infer_path, index_col=0)
+        n_to_remove_in_pred_df = len(list(set(pred_df.detect_id).intersection(filt_detect_ids)))
+        print("filtering", n_to_remove_in_pred_df, "as outlier objects")
+        pred_df_edit = pred_df[~pred_df.detect_id.isin(filt_detect_ids)]
+        assert len(yolores) - len(filt_predictions) == len(yolores_filtered), "Results romoval count not correct"
+        assert len(pred_df) - n_to_remove_in_pred_df == len(pred_df_edit), "Prediction romoval count not correct"
+        pred_df_edit.to_csv(os.path.join(os.path.dirname(yolo_infer_path), "predictions_filtered.csv"))
+        return yolores_filtered
 
     def yolo_results(self, **kwargs):
         """
@@ -194,6 +210,7 @@ class YOLOResults:
             yolores = ResultsUtils.area_and_pixel_size(yolores)
             yolores = ResultsUtils.calc_fish_wt(yolores)
             yolores = ResultsUtils.calc_fish_wt_corr(yolores)
+            yolores = self.filter_based_on_weight(yolores, self.yolo_infer_path)
         return yolores
 
 # if __name__ == "__main__":

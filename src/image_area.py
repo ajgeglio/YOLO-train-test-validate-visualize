@@ -40,7 +40,14 @@ class ImageArea:
     @staticmethod
     def calc_weight(box_DL_mm):
         # Fish weight from length (g)
-        return np.where(box_DL_mm > 0, (box_DL_mm ** 3.2266 * np.exp(-12.251)), 0)
+        
+        # 1. Create a "safe" array. All values > 0 are kept, 
+        #    all others (<= 0) become 0.
+        safe_box_mm = np.clip(box_DL_mm, a_min=0, a_max=None)
+        
+        # 2. Now, perform the calculation on the safe array.
+        #    (0 ** 3.2266) is 0, which is correct.
+        return safe_box_mm ** 3.2266 * np.exp(-12.251)
     calc_weight_func = np.vectorize(calc_weight.__func__)
 
     @staticmethod

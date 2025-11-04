@@ -323,35 +323,14 @@ class Utils:
         return (img.height, img.width)
     
     @staticmethod
-    def make_img_df_folder(self, img_folder, ext=".png"):
-    # use to check a list of images and get dates times and their dimensions(not good for very large lists)
-        img_pths = glob.glob(os.path.join(img_folder,"*"+ext))
-        tim = lambda x: os.path.basename(x)
-        tid = lambda x: str(x).split(".")[0]
-        tet = lambda x: float(str(x).split("_")[1]+"."+str(x).split("_")[2])
-        tdt = lambda x: datetime.datetime.fromtimestamp(x)
-        ims = lambda x: self.get_shape_pil(x)
-        df = pd.DataFrame(img_pths, columns=["image_path"])
-        df["image_dim"] = df.image_path.apply(ims)
-        df["image_id"] = df.image_path.apply(tim).apply(tid)
-        df["time_s"] = df.image_id.apply(tet)
-        df["datetime"] = df.time_s.apply(tdt)
-        return df
+    def read_YOLO_lbl(lbl_file):
+        lbl = pd.read_csv(lbl_file, sep=' ', names=["cls","x","y","w","h"], index_col=None)
+        return lbl
     
     @staticmethod
-    def make_img_df_list(self, img_pths):
-        tim = lambda x: os.path.basename(x)
-        tid = lambda x: str(x).split(".")[0]
-        tet = lambda x: float(str(x).split("_")[1]+"."+str(x).split("_")[2])
-        tdt = lambda x: datetime.datetime.fromtimestamp(x)
-        ims = lambda x: self.get_shape_pil(x)
-        df = pd.DataFrame(img_pths, columns=["image_path"])
-        df["image_dim"] = df.image_path.apply(ims)
-        df["image_id"] = df.image_path.apply(tim).apply(tid)
-        df["time_s"] = df.image_id.apply(tet)
-        df["datetime"] = df.time_s.apply(tdt)
-        return df
-    
+    def save_YOLO_lbl(df, lbl_file):
+        df.to_csv(lbl_file, header=None, sep=' ', index=False)
+
     @staticmethod
     def return_n_objects_in_lbl(lbl_file):
         try:

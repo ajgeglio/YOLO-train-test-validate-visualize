@@ -128,12 +128,13 @@ class Utils:
     
     @staticmethod
     def write_list_txt(lst, filename):
-        with open(filename, "w", encoding='utf-8-sig') as f:
+        # CHANGE IS HERE: Removed '-sig' to prevent writing the Byte Order Mark (BOM)
+        with open(filename, "w", encoding='utf-8') as f: 
             f.writelines("%s\n" % l for l in lst)
 
     @staticmethod
     def read_list_txt(filename):
-        with open(filename, 'r', encoding='utf-8-sig') as f:
+        with open(filename, 'r', encoding='utf-8') as f:
             return [line.strip() for line in f if line.strip()]
 
     @staticmethod

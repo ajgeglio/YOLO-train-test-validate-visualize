@@ -5,6 +5,7 @@ import time
 from timeit import default_timer as stopwatch
 from ultralytics import YOLO, checks
 import torch
+from pathlib import Path # <-- 1. ADD THIS IMPORT
 
 # --- Logger class to tee output to both file and terminal ---
 class Logger(object):
@@ -37,6 +38,8 @@ def parse_arguments():
     parser.add_argument('--warmup_momentum', default=0.8, type=float, help="Initial momentum during the warmup phase.")
     parser.add_argument('--optimizer', default='auto', help="Automatically selects the optimizer (often defaults to SGD for detection/segmentation).")
     parser.add_argument('--note', default="training run", help='Additional notes to append on the training run')
+    # Re-adding single_cls as a boolean flag. It should be False (default) for 6 classes.
+    parser.add_argument('--single_cls', action='store_true', help='Treats all classes as a single class (only use for binary classification).') 
     parser.set_defaults(resume=False)
     return parser.parse_args()
 
@@ -65,20 +68,29 @@ def main():
     os.makedirs(training_run_folder, exist_ok=True)
     log_file_path = os.path.join(training_run_folder, f"{name_time}_yolo_training.log")
 
-    # --- 2. Set up logging to capture all subsequent output ---
+    # --- 2. POSIX Path Fix for Ultralytics ---
+    # This forces the path into the format Ultralytics accepts for local files, 
+    # preventing the download attempt.
+    if args.data_yml:
+        data_path_posix = str(Path(args.data_yml).resolve().as_posix())
+    else:
+        data_path_posix = None
+    
+    # --- 3. Set up logging to capture all subsequent output ---
     sys.stdout = Logger(log_file_path)
 
     print("--- Training Run Started ---")
     print(f"Log file created at: {log_file_path}")
     print(f"Start time: {time.ctime()}")
 
-    # --- 3. Log all input arguments ---
+    # --- 4. Log all input arguments ---
     print("\n--- Input Arguments ---")
     for arg, value in vars(args).items():
         print(f"  {arg}: {value}")
+    print(f"  data_yml (POSIX resolved): {data_path_posix}") # Log the corrected path
     print("---------------------\n")
 
-    # --- 4. Begin core script logic ---
+    # --- 5. Begin core script logic ---
     setup_environment()
     torch.cuda.empty_cache()
     checks()
@@ -91,8 +103,8 @@ def main():
     # Train the model
     print("Starting YOLOv8 training...")
     model.train(
-        data=args.data_yml,
-        # compile=True,
+        data=data_path_posix, # <-- USE THE POSIX PATH
+        # compile="default",
         resume=args.resume,
         pretrained=True,
         epochs=args.epochs,
@@ -105,7 +117,7 @@ def main():
         batch=args.batch_size,
         patience=args.patience,
         val=True,
-        single_cls=True,
+        single_cls=args.single_cls,
         cache=False,
         exist_ok=True,
         optimizer=args.optimizer,

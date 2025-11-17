@@ -32,6 +32,7 @@ def parse_arguments():
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
     parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
+    parser.add_argument('--sahi_tiled', action="store_true", help='Enable SAHI tiled inference')
     return parser.parse_args()
 
 def run_predict(args):
@@ -61,6 +62,8 @@ def run_predict(args):
         cmd.append("--has_labels")
     if args.plot:
         cmd.append("--plot")
+    if args.sahi_tiled:
+        cmd.append("--sahi_tiled")
 
     # This print statement will go to the log file (and potentially the terminal)
     print("Running subprocess:", " ".join(cmd))
@@ -73,7 +76,7 @@ def run_predict(args):
 def output_YOLO_results(args, yolo_infer_path, find_closest=False):
     print(f"Processing results with confidence: {args.confidence}")
 
-    output = YOLOResults(args.metadata, yolo_infer_path, args.substrate, args.op_table, args.confidence)
+    output = YOLOResults(args.metadata, yolo_infer_path, args.substrate, args.op_table, args.results_confidence)
     yolores = output.yolo_results(find_closest=find_closest)
     return yolores
 

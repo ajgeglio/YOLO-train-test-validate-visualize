@@ -10,6 +10,7 @@ def main():
     parser.add_argument("--weights", required=False, default=r"path\to\model_weights.pt", help="Path to YOLO model weights")
     parser.add_argument("--op_table", default=r"Z:\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx", help="Path to OP_TABLE.xlsx")
     parser.add_argument("--metadata", required=True, help="Path to meta.csv")
+    parser.add_argument("--substrate", help="Optional substrate inference results path") 
     parser.add_argument("--output_name", required=True, help="Output name for results")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
     parser.add_argument("--confidence", type=float, default=0.01, help="Confidence threshold")
@@ -18,9 +19,9 @@ def main():
     parser.add_argument("--has_labels", action="store_true", help="Whether labels are present")
     parser.add_argument("--run_predict", action="store_true", help="Whether to run prediction")
     parser.add_argument("--plot", action="store_true", help="Whether to plot overlays")
-    parser.add_argument("--substrate_path", help="Optional substrate path") 
-    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
     parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
+    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
+    parser.add_argument('--sahi_tiled', action="store_true", help='Enable SAHI tiled inference')
     args = parser.parse_args()
 
     cmd = [
@@ -52,8 +53,10 @@ def main():
         cmd.append("--has_labels")
     if args.plot:
         cmd.append("--plot")
-    if args.substrate_path:
-        cmd.extend(["--substrate_path", args.substrate_path])
+    if args.substrate:
+        cmd.extend(["--substrate", args.substrate])
+    if args.sahi_tiled:
+        cmd.append("--sahi_tiled")
 
     print("Running:", " ".join(cmd))
     subprocess.run(cmd, check=True)

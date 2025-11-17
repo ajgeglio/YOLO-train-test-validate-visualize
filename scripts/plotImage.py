@@ -1,12 +1,13 @@
 import argparse
-import pandas as pd
 import sys
-import numpy as np
+from pathlib import Path
+import pandas as pd
 import os
 import glob
 import random
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from overlays import Overlays
+from utils import Utils
 
 def parse_arguments():
     """Parses command-line arguments."""
@@ -125,11 +126,17 @@ def main():
         print(f"  Image: {os.path.basename(image_path)}")
     elif args.labels_only:
         label_path = label_paths[plot_index]
+        label_path = Path(label_path)
         image_path = label_paths[plot_index]
+        # lbl = Utils.read_YOLO_lbl(label_path)
         print(f"  Overlaying blank image")
+        # print(lbl)
     if not args.images_only:
         label_path = label_paths[plot_index]
+        # lbl = Utils.read_YOLO_lbl(label_path)
+        lbl = Utils.read_YOLO_lbl(label_path)
         print(f"  Label: {os.path.basename(label_path)}")
+        print(lbl)
     elif args.images_only:
         label_path = image_paths[plot_index]
         print(f"  No label selected")

@@ -269,6 +269,13 @@ def main():
                             clipped_width = clipped_x_max - clipped_x_min
                             clipped_height = clipped_y_max - clipped_y_min
 
+                            # Example: Skip any clipped box that is smaller than 4 pixels in either dimension.
+                            MIN_PIXEL_SIZE = 4 
+
+                            # Calculate normalized min width/height (e.g., 2 pixels / 1672 = ~0.0012)
+                            MIN_NORMALIZED_WIDTH = MIN_PIXEL_SIZE / tile_width_px
+                            MIN_NORMALIZED_HEIGHT = MIN_PIXEL_SIZE / tile_height_px
+
                             # CRITICAL NEW FILTER: Skip if clipped width OR height is less than 50% of the original.
                             if clipped_width < (width * 0.5) or clipped_height < (height * 0.5):
                                 continue
@@ -286,7 +293,9 @@ def main():
                             new_height = clipped_height / tile_height_px
 
                             # Final sanity check: ensure no box is too small after clipping (e.g., just a single pixel)
-                            # You might want to skip boxes smaller than a threshold, but for now, we include all.
+                            # Add the instability check:
+                            if new_width < MIN_NORMALIZED_WIDTH or new_height < MIN_NORMALIZED_HEIGHT:
+                                continue # Skip this box
                             
                             new_labels.append(f"{class_id} {new_x_center} {new_y_center} {new_width} {new_height}")
                     

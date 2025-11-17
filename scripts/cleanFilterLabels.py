@@ -8,7 +8,26 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from utils import Utils
 from reports import Reports
 # -----------------------------------------------
-
+def lbl_report_filt_min_pixels(df, min_pixels=4):
+    """
+    Identifies labels whose normalized width or height corresponds to fewer than 
+    MIN_PIXELS in the original tile.
+    
+    Assumption: Since the training size is 1672, we use 1672 as the maximum 
+    possible dimension for the normalized conversion.
+    """
+    # Use the max tile dimension (width or square input size) for a conservative pixel conversion
+    MAX_TILE_DIM = 1672
+    
+    # Calculate the minimum normalized value required
+    min_normalized = min_pixels / MAX_TILE_DIM
+    
+    # Filter for boxes where the normalized width OR height is below the threshold
+    # Note: df.w and df.h are normalized to the tile size
+    # If a tile is 1672x1307, the normalized w=0.0024 is 4px, but h=0.003 is 4px.
+    # Using 1672 for both checks safely removes objects that are too small 
+    # in the 1307 dimension as well.
+    return df[(df.w < min_normalized) | (df.h < min_normalized)]
 
 def lbl_report_filt_g(df):
     """
@@ -32,7 +51,7 @@ def filter_yolo_lbl_report_and_remove_labels(
     
     # --- 1. Setup Paths ---
     meta_path = os.path.join(run_directory, "metadata.csv") # User updated this
-    yolo_lbl_path = os.path.join(run_directory, "labels_orig.csv")
+    yolo_lbl_path = os.path.join(run_directory, "labels_edit.csv")
     substrate_path = None # As in your original code
     op_path = r"Z:\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx"
     
@@ -47,9 +66,20 @@ def filter_yolo_lbl_report_and_remove_labels(
     
     lbl_df = pd.read_csv(yolo_lbl_path, index_col=0)
     print(f"Loaded labels.csv with {len(lbl_df)} total objects.")
+
+    # 🎯 APPLY AND COMBINE BOTH FILTERS 🎯
     
-    filt_tiles = lbl_report_filt_g(label_report)
-    filt_tiles_ground_truth = filt_tiles.ground_truth_id
+    # Filter A: Original Filter (Weight)
+    filt_tiles_weight = lbl_report_filt_g(label_report)
+    
+    # Filter B: New Filter (Min Pixel Size = 4)
+    filt_tiles_pixels = lbl_report_filt_min_pixels(label_report, min_pixels=4)
+    
+    # Combine ground_truth_ids from both filters and remove duplicates
+    filt_tiles_ground_truth = pd.concat([
+        filt_tiles_weight.ground_truth_id, 
+        filt_tiles_pixels.ground_truth_id
+    ]).drop_duplicates().reset_index(drop=True)
     
     assert not filt_tiles_ground_truth.duplicated().any(), "Duplicate ground_truth_ids found in filter list"
     print(f"Found {len(filt_tiles_ground_truth)} objects to remove based on filtering.")
@@ -62,7 +92,16 @@ def filter_yolo_lbl_report_and_remove_labels(
     tile_lbl_edit = lbl_df[~lbl_df.ground_truth_id.isin(filt_tiles_ground_truth)]
     
     # Your excellent sanity check
-    assert len(lbl_df) - len(filt_tiles_ground_truth) == len(tile_lbl_edit)
+    # Calculate the total number of *rows* in lbl_df that match the unique bad IDs
+    rows_to_remove_count = len(lbl_df[lbl_df.ground_truth_id.isin(filt_tiles_ground_truth)])
+    
+    # Filter the master report
+    tile_lbl_edit = lbl_df[~lbl_df.ground_truth_id.isin(filt_tiles_ground_truth)]
+    
+    # Corrected sanity check: 
+    # (Original Rows) - (Actual Rows Removed) == (Remaining Rows)
+    assert len(lbl_df) - rows_to_remove_count == len(tile_lbl_edit), \
+        "Sanity check failed: The number of rows removed from the master report does not match the expected count."
     
     if save_new_labels_csv:
         edit_path = os.path.join(run_directory, "labels_edit.csv")
@@ -148,7 +187,7 @@ def filter_yolo_lbl_report_and_remove_labels(
                 print(f"  ...Successfully cleaned and saved ({num_removed} removed).", end=" \r")
             
         except Exception as e:
-            print(f"  ...ERROR processing file {lbl_file_path}: {e}")
+            print(f"\n  ...ERROR processing file {lbl_file_path}: {e}")
             # Optionally, you could restore the backup here
             # if os.path.exists(backup_path):
             #     shutil.move(backup_path, lbl_file_path)
@@ -158,8 +197,8 @@ def filter_yolo_lbl_report_and_remove_labels(
 # --- Example of how to run this ---
 if __name__ == "__main__":
     # --- (User's real directories) ---
-    run_dir = r"D:\ageglio-1\gobyfinder_yolov8\output\test_runs\Labeled data 2048 All Run13"
-    tiles_dir = r"D:\datasets\tiled\train\images"
+    run_dir = r"D:\ageglio-1\gobyfinder_yolov8\output\test_runs\Labeled data tiled 2048 HNM"
+    tiles_dir = r"D:\datasets\tiled\train\labels"
     
     print("--- Running Cleaner ---")
     filter_yolo_lbl_report_and_remove_labels(run_dir, tiles_dir, save_new_labels_csv=False, save_new_labels=False)

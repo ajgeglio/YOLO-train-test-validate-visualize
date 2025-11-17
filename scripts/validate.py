@@ -33,7 +33,6 @@ def parse_arguments():
     parser.add_argument('--confidence', dest='confidence', default=0.01, type=float, help='Sets the minimum confidence threshold for detections. Detections with confidence below this threshold are discarded.')
     parser.add_argument('--iou', dest='iou', default=0.6, type=float, help='Sets the Intersection Over Union (IoU) threshold for Non-Maximum Suppression (NMS). Helps in reducing duplicate detections.')
     parser.add_argument('--save_hybrid', dest='save_hybrid', action="store_true", help='If True, saves a hybrid version of labels that combines original annotations with additional model predictions.')
-    parser.add_argument('--img_size', dest='img_size', default=2048, type=int, help='max image dimension')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -57,7 +56,7 @@ if __name__ == '__main__':
     torch.cuda.empty_cache()
 
     model = YOLO(args.weights)
-    
+    image_size = model.ckpt["train_args"]["imgsz"]
     # --- Run Validation ---
     print("Starting YOLOv8 validation...")
     metrics = model.val(
@@ -70,7 +69,7 @@ if __name__ == '__main__':
         project=folder,
         plots=True,
         conf=args.confidence,
-        imgsz=args.img_size,
+        imgsz=image_size,
         iou=args.iou,
         save_hybrid=args.save_hybrid,
         save_json=True

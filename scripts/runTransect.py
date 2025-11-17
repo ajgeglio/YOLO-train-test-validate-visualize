@@ -5,6 +5,7 @@ import sys
 import os
 import pandas as pd
 from typing import Dict, Any
+import numbers
 SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
 sys.path.append(str(SCRIPT_DIR.parent / "src"))
 try:
@@ -20,7 +21,9 @@ except ImportError as e:
 def arg_parser():
     """Main function to parse arguments and run the report generation pipeline."""
     parser = argparse.ArgumentParser(description="Generate a summary report for a specific transect inference run.")
-    parser.add_argument("--test_run", type=str, required=False, default="label data inference 2048 all",
+    parser.add_argument("--run_directory", type=str, required=True, default="D:\\ageglio-1\\gobyfinder_yolov8\\output\\test_runs",
+                        help="The name of the test run folder where results are stored.")
+    parser.add_argument("--test_run", type=str, required=False, default="default_test_run",
                         help="The name of the test run folder where results are stored.")
     parser.add_argument("--collect_id", type=str, required=False, default='20200806_001_Iver3069_ABS1',
                         help="The specific collect_id (transect) to analyze.")
@@ -30,18 +33,17 @@ def arg_parser():
                         help="Flag to run the results processing step.")
     return parser.parse_args()
 
-def load_config(test_run: str, collect_id: str, confidence_threshold: float) -> Dict[str, pathlib.Path]:
+def load_config(run_directory: str, test_run: str, collect_id: str, confidence_threshold: float) -> Dict[str, pathlib.Path]:
     """Defines and resolves all necessary file paths."""
     
     # Use environment variables or a config file for Z: drive to improve portability.
-    # Hardcoding Z:\ is fine for a specific environment but a risk for others.
     BASE_DRIVE = r"Z:" 
     
     PATHS = {
         "poly_lbl_assmt": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\FishScaleLabelAssessment\2020-2023_assessment_confirmedfish.pkl",
         "op_table": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx",
-        "metadata": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\MetadataCombined\all_annotated_meta_splits_20250915.csv",
-        "run_folder": pathlib.Path(f"C:\\Users\\ageglio\\ageglio-1\\gobyfinder_yolov8\\output\\test_runs\\{test_run}"),
+        "metadata": BASE_DRIVE + r"\__AdvancedTechnologyBackup\07_Database\MetadataCombined\all_annotated_meta_splits_filtered_20251030.csv",
+        "run_folder": pathlib.Path(f"{run_directory}\\{test_run}"),
     }
 
     # Derived paths, created inside the run folder
@@ -54,9 +56,11 @@ def load_config(test_run: str, collect_id: str, confidence_threshold: float) -> 
         "transect_folder": PATHS["run_folder"] / f"{collect_id}_transect_summary"
     })
 
-    # Convert all path strings to pathlib.Path objects
-    # paths = {key: pathlib.Path(value) if isinstance(value, str) else value for key, value in PATHS.items()}
-    
+    # Normalize string paths to pathlib.Path for consistent handling
+    for k, v in list(PATHS.items()):
+        if isinstance(v, str):
+            PATHS[k] = pathlib.Path(v)
+
     # Ensure the output directory exists
     PATHS["run_folder"].mkdir(parents=True, exist_ok=True)
     PATHS["transect_folder"].mkdir(parents=True, exist_ok=True)
@@ -72,16 +76,22 @@ def load_and_filter_data(paths: Dict[str, pathlib.Path], collect_id: str, confid
     
     print(f"Loading data for transect: {collect_id}")
     
-    # 1. Load usable images for the transect
-    usable_images_df = pd.read_csv(paths["metadata"], usecols=["Filename", "Usability", "collect_id"])
-    
-    # Case-insensitive column selection for collect ID
-    id_col = 'collect_id' if 'collect_id' in usable_images_df.columns else 'CollectID'
-    
+    # 1. Load usable images for the transect (robust to column name casing)
+    usable_images_df = pd.read_csv(paths["metadata"], low_memory=False)
+
+    # Detect column names case-insensitively
+    filename_col = next((c for c in usable_images_df.columns if c.lower() == "filename"), None)
+    usability_col = next((c for c in usable_images_df.columns if c.lower() == "usability"), None)
+    id_col = next((c for c in usable_images_df.columns if "collect_id" in c.lower() or "collectid" in c.lower()), None)
+
+    if filename_col is None or usability_col is None or id_col is None:
+        missing = [n for n, v in (("Filename", filename_col), ("Usability", usability_col), ("collect_id", id_col)) if v is None]
+        raise ValueError(f"Metadata CSV is missing required column(s): {', '.join(missing)}. Available columns: {list(usable_images_df.columns)}")
+
     usable_images = usable_images_df[
         (usable_images_df[id_col] == collect_id) & 
-        (usable_images_df.Usability == "Usable")
-    ].Filename.tolist()
+        (usable_images_df[usability_col] == "Usable")
+    ][filename_col].tolist()
     
     if not usable_images:
         raise ValueError(f"No usable images found for {id_col}={collect_id}.")
@@ -122,8 +132,8 @@ def load_and_filter_data(paths: Dict[str, pathlib.Path], collect_id: str, confid
         "infer_transects": infer_transects,
         "lblres_transects": lblres_transects,
         "poly_assmt_transects": poly_assmt_transects,
-        "tpd": tpd,
-        "fpd": fpd,
+        "tpd": scores_df[scores_df.tp == 1].detect_id,
+        "fpd": scores_df[scores_df.fp == 1].detect_id,
         "fnid": fnid,
         "confidence_threshold": confidence_threshold
     }
@@ -158,7 +168,12 @@ def calculate_metrics(data: Dict[str, Any]) -> Dict[str, Any]:
     confidence_threshold = data["confidence_threshold"]
     
     metrics = {}
-    metrics['Collect ID'] = infer_transects.CollectID.iloc[0] if not infer_transects.empty else 'Unknown'
+
+    # Safe retrieval of collect id from infer_transects (case-insensitive)
+    collect_col = None
+    if not infer_transects.empty:
+        collect_col = next((c for c in infer_transects.columns if "collect_id" in c.lower() or "collectid" in c.lower()), None)
+    metrics['Collect ID'] = infer_transects[collect_col].iloc[0] if collect_col and not infer_transects.empty else 'Unknown'
     metrics["Confidence Threshold"] = confidence_threshold if not infer_transects.empty else 'N/A'
     # --- Total Weights (g) ---
     metrics["total_lbl_box_weight"] = safe_sum(lblres_transects, 'box_DL_weight_g_corr')
@@ -230,7 +245,13 @@ def generate_report(metrics: Dict[str, Any], data: Dict[str, Any], paths: Dict[s
     df = pd.DataFrame(data_for_table)
 
     # Formatting: Handle separators, NaNs, and numerical formatting
-    df['Value'] = df['Value'].apply(lambda x: f"{x:,.2f}" if pd.notna(x) and isinstance(x, (int, float)) else ('N/A' if pd.isna(x) else ''))
+    def fmt_val(x):
+        if pd.isna(x):
+            return 'N/A'
+        if isinstance(x, numbers.Number):
+            return f"{x:,.2f}"
+        return str(x) if x is not None else ''
+    df['Value'] = df['Value'].apply(fmt_val)
     df = df.replace('---', '')
     
     # --- 2. Generate and Trigger Plot Saving ---
@@ -283,22 +304,27 @@ def generate_report(metrics: Dict[str, Any], data: Dict[str, Any], paths: Dict[s
     # --- 3. Write/Append to Markdown File ---
     output_path_report = paths["transect_folder"] / REPORT_FILENAME
     
+    # Extract collect_id dynamically for the header (robust)
+    collect_id_val = metrics.get('Collect ID', 'Unknown')
+    try:
+        if not data['infer_transects'].empty:
+            id_col_name = next((c for c in data['infer_transects'].columns if 'collect_id' in c.lower() or 'collectid' in c.lower()), None)
+            if id_col_name is not None:
+                collect_id_val = data['infer_transects'][id_col_name].iloc[0]
+    except Exception:
+        # fallback to metrics value already set
+        pass
+
     with open(output_path_report, 'a') as f:
         f.write(f"\n# Transect Summary Report: {paths['transect_folder'].name}\n\n")
-        
-        # Extract collect_id dynamically for the header
-        try:
-            id_col_name = [c for c in data['infer_transects'].columns if 'collect_id' in c.lower()][0]
-        except Exception as e:
-            id_col_name = [c for c in data['infer_transects'].columns if 'collectid' in c.lower()][0]
-        except:
-            print("Warning: Could not find 'collect_id' or 'CollectID' column.")
-        collect_id_val = data['infer_transects'][id_col_name].iloc[0]
         f.write(f"**Transect Run:** `{paths['run_folder'].name}` | **Collect ID:** `{collect_id_val}`\n\n")
-        
         f.write("## 1. Biomass Metrics Summary\n\n")
-        f.write(df.to_markdown(index=False))
-               
+        # to_markdown may require tabulate; provide a safe fallback
+        try:
+            f.write(df.to_markdown(index=False))
+        except Exception:
+            f.write(df.to_string(index=False))
+
     print(f"Summary report (including plot links) saved to: {output_path_report}")
 
 # ======================================================================
@@ -317,8 +343,9 @@ def main():
         # 1. Configuration
         confidence_threshold = args.confidence_threshold
         collect_id = args.collect_id
-        run_path = args.test_run
-        paths = load_config(run_path, collect_id, confidence_threshold)
+        test_run = args.test_run
+        run_directory = args.run_directory
+        paths = load_config(run_directory, test_run, collect_id, confidence_threshold)
         
         # 2. Run results for the confidence threshold (no inference)
         if args.run_results:
@@ -327,11 +354,12 @@ def main():
                 os.path.join(os.path.dirname(__file__), "runResults.py"),
                 "--op_table", str(paths["op_table"]),
                 "--metadata", str(paths["metadata"]),
-                "--output_name", run_path,
+                "--output_name", test_run,
                 "--has_labels",
                 "--results_confidence", str(confidence_threshold)
             ]
-            subprocess.run(command, shell=True, check=True)
+            # Use list form without shell=True for safety
+            subprocess.run(command, check=True)
         # 3. Data Loading and Filtering
         data = load_and_filter_data(paths, collect_id, confidence_threshold)
         # 4. Metric Calculation

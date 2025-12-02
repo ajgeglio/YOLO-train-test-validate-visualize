@@ -3,8 +3,8 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from utils import Utils
-from predicting import PredictOutput
-from reports import Reports
+from predictingFunctions import BatchOutputProcessor
+from reportFunctions import Reports
 from ultralytics import YOLO
 import torch
 from timeit import default_timer as stopwatch
@@ -75,8 +75,12 @@ def return_lbl_list(args, test_images):
     elif args.lbl_list_csv:
         with open(args.lbl_list_csv, 'r') as f:
             test_labels = f.read().splitlines()
-    else:
-        raise ValueError("Must provide a label directory or a list of filepaths")
+    elif args.img_list_csv and args.has_labels and not args.lbl_list_csv:
+        try:
+            with open(os.path.join(os.path.dirname(args.img_list_csv), "labels.txt"), 'r') as f:
+                test_labels = f.read().splitlines()
+        except:
+            raise ValueError("Must provide a path to labels.txt file or a csv listing filepaths of labels")
     test_labels = sorted(test_labels)
     assert len(test_images) == len(test_labels), "Mismatch between images and labels"
     return test_labels
@@ -192,7 +196,7 @@ def main():
                 # Convert SAHI result to YOLO format for PredictOutput
                 yolo_result = result.to_coco_annotations()
                 # You may need to adapt PredictOutput.YOLO_predict_w_outut to accept this format
-                PredictOutput.YOLO_predict_w_outut_sahi(
+                BatchOutputProcessor.YOLO_predict_w_outut_sahi(
                     yolo_result, lbl, img_path, pred_csv_path,
                     lbl_csv_path if args.has_labels else None,
                     plots_folder, args.plot, args.has_labels
@@ -213,7 +217,7 @@ def main():
             )
             for r, img_path in zip(results, imgs):
                 lbl = lbls.pop(0) if lbls else None
-                PredictOutput.YOLO_predict_w_outut(
+                BatchOutputProcessor.YOLO_predict_w_outut(
                     r, lbl, img_path, pred_csv_path,
                     lbl_csv_path if args.has_labels else None,
                     plots_folder, args.plot, args.has_labels
@@ -234,7 +238,7 @@ def main():
 
     # Handle cages if required
     if args.has_cages:
-        PredictOutput.save_cage_box_label_outut(pred, lbl, args.img_directory, run_path)
+        BatchOutputProcessor.save_cage_box_label_outut(pred, lbl, args.img_directory, run_path)
 
     print("Total Time: {:.2f} seconds".format(stopwatch() - start_time))
     print("Done!")

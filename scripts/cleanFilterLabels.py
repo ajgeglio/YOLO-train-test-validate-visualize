@@ -6,7 +6,7 @@ import numpy as np
 # --- Use Actual Classes ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from utils import Utils
-from reports import Reports
+from reportFunctions import Reports
 # -----------------------------------------------
 def lbl_report_filt_min_pixels(df, min_pixels=4):
     """

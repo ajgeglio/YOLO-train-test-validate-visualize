@@ -9,7 +9,7 @@ import numbers
 SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
 sys.path.append(str(SCRIPT_DIR.parent / "src"))
 try:
-    from reports import Reports
+    from reportFunctions import Reports
     from transects import Transects
 except ImportError as e:
     print(f"Error importing modules: {e}. Check your PYTHONPATH and 'src' directory.")

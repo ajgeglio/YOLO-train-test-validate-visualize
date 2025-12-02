@@ -3,9 +3,9 @@ import sys
 import glob
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-from testing import Testing
-from overlays import Overlays
-from reports import Reports
+from dataFormatter import YOLODataFormatter
+from overlayFunctions import Overlays
+from reportFunctions import Reports
 import pandas as pd
 from datetime import datetime
 import argparse
@@ -115,14 +115,14 @@ def main():
     labels = args.has_labels
 
     if labels:
-        df_lbl, df_prd = Testing.return_lbl_pred_df(results, lbls, imgs)
+        df_lbl, df_prd = YOLODataFormatter.return_lbl_pred_df(results, lbls, imgs)
         df_scores = Reports.scores_df(df_lbl, df_prd, iou_tp=0.5)
         df_scores.to_csv(os.path.join(run_path, f"scores.csv"), index=False)
         df_lbl.to_csv(os.path.join(run_path, f"labels.csv"), index=False)
         df_prd.to_csv(os.path.join(run_path, f"predictions.csv"), index=False)
         print("Labels and predictions saved to csvs")
     else:
-        df_prd = Testing.return_pred_df(results, imgs)
+        df_prd = YOLODataFormatter.return_pred_df(results, imgs)
         df_prd.to_csv(os.path.join(run_path, f"predictions.csv"), index=False)
         print("Predictions saved to csv")
     if plot:

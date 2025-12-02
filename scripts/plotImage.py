@@ -6,7 +6,7 @@ import os
 import glob
 import random
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from overlays import Overlays
+from overlayFunctions import Overlays
 from utils import Utils
 
 def parse_arguments():

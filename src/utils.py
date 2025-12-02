@@ -128,7 +128,6 @@ class Utils:
     
     @staticmethod
     def write_list_txt(lst, filename):
-        # CHANGE IS HERE: Removed '-sig' to prevent writing the Byte Order Mark (BOM)
         with open(filename, "w", encoding='utf-8') as f: 
             f.writelines("%s\n" % l for l in lst)
 
@@ -505,36 +504,54 @@ class Utils:
             return tiled_basename
     
     @staticmethod
-    def get_all_img_lbl_pths(BASE_DIR = "D:\\datasets\\tiled", SPLITS = ["train", "test", "validation"]):
-        # 1. Define base directories and extensions
+    def get_all_img_lbl_pths(BASE_DIR="D:\\datasets\\tiled", SPLITS=["train", "test", "validation"]):
+        # 1. Configuration
+        IMAGE_EXTENSIONS = ["png", "jpg"]  # Store as simple strings for pathlib
         
-        IMAGE_EXTENSIONS = ["*.png", "*.jpg"]
-
-        # 3. Use list comprehensions and os.path.join for cleaner path generation
+        # 2. Initialize lists and ensure BASE_DIR is a Path object
+        base_path = Path(BASE_DIR)
         all_image_paths = []
         all_label_paths = []
-
-        if SPLITS == None:
-            image_dir = os.path.join(BASE_DIR, "images")
-            label_dir = os.path.join(BASE_DIR, "labels")
-        else:            
-            for split in SPLITS:
-                image_dir = os.path.join(BASE_DIR, split, "images")
-                label_dir = os.path.join(BASE_DIR, split, "labels")
-
-        # Aggregate image paths for multiple extensions
-        for ext in IMAGE_EXTENSIONS:
-            all_image_paths.extend(glob.glob(os.path.join(image_dir, ext)))
-
-        # Aggregate label paths (assuming only '*.txt')
-        all_label_paths.extend(glob.glob(os.path.join(label_dir, "*.txt")))
-
-        # 4. Assert and print checks
-        print(f"Total images found in {image_dir}: {len(all_image_paths)}")
-        print(f"Total labels found: {len(all_label_paths)}")
-        assert len(all_image_paths) == len(all_label_paths), "Mismatch between image and label counts."
         
-        return all_image_paths, all_label_paths
+        # Determine the effective splits to search
+        splits_to_search = SPLITS if SPLITS else [""] # If SPLITS is None/empty, search BASE_DIR directly
+
+        # 3. Aggregate Image Paths
+        # The structure is assumed to be: BASE_DIR/split_name/image_dir/*.ext
+        for split in splits_to_search:
+            # Construct the path pattern: BASE_DIR / split / 'images' / *.(png|jpg)
+            # We assume a fixed subdirectory 'images' for images inside each split folder
+            image_search_path = base_path / split / "images"
+            
+            # Using nested generators for a concise and memory-efficient way to collect paths
+            # The '*' in the pattern is the key to globbing
+            for ext in IMAGE_EXTENSIONS:
+                # '**/*' is for recursive search, but here we search only one level deep
+                # using `*.ext` on the target path `image_search_path`
+                all_image_paths.extend(image_search_path.glob(f"*.{ext}"))
+
+
+        # 4. Aggregate Label Paths
+        # The structure is assumed to be: BASE_DIR/split_name/labels/*.txt
+        for split in splits_to_search:
+            # Construct the path pattern: BASE_DIR / split / 'labels' / *.txt
+            # We assume a fixed subdirectory 'labels' for labels inside each split folder
+            label_search_path = base_path / split / "labels"
+            
+            # Use glob to find all .txt files in the label directory
+            all_label_paths.extend(label_search_path.glob("*.txt"))
+
+        
+        # 5. Convert pathlib objects to strings (if required by calling code, otherwise keep as Path objects)
+        all_image_paths_str = [str(p) for p in all_image_paths]
+        all_label_paths_str = [str(p) for p in all_label_paths]
+        
+        # 6. Assert and print checks
+        print(f"Total images found in {BASE_DIR}: {len(all_image_paths_str)}")
+        print(f"Total labels found: {len(all_label_paths_str)}")
+        assert len(all_image_paths_str) == len(all_label_paths_str), "Mismatch between image and label counts."
+        
+        return all_image_paths_str, all_label_paths_str
     
     @staticmethod
     def check_txt_file_vs_images(tile_img_list_path, tile_img_dir):
@@ -679,6 +696,24 @@ class Utils:
         
         # After the fix, for your provided data, len(tiled_images) will be 6.
         return tiled_set_images, tiled_set_labels
+    
+    def delete_folders_list(folder_list):
+        print(f"Found {len(folder_list)} folders to delete.")
+
+        if folder_list:
+            # Safely iterate and remove each folder
+            for folder in folder_list:
+                try:
+                    # Check if the path exists before attempting to delete
+                    if os.path.isdir(folder):
+                        shutil.rmtree(folder)
+                        print(f"Deleted: {folder}")
+                    else:
+                        print(f"Skipped: {folder} (Not a directory)")
+                except Exception as e:
+                    print(f"Error deleting {folder}: {e}")
+        else:
+            print("No existing folders found.")
     
     @staticmethod
     def list_full_set(set_image_names, all_image_paths, all_label_paths):

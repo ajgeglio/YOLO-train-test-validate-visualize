@@ -1,4 +1,4 @@
-from image_area import ImageArea
+from fishScale import FishScale
 import pandas as pd
 import numpy as np
 from utils import *
@@ -431,91 +431,208 @@ class LBLResults:
 #     print(lblres.head())
 
 class ResultsUtils:
-    """Class to calculate image area and pixel size based on YOLO results."""
+    """
+    Utility class to calculate image area, pixel size, and object dimensions/weight 
+    based on YOLO detection results and AUV camera metadata.
+    """
+    
+    # --- Data Segmentation ---
     @staticmethod
-    def indices(results):
+    def indices(results: pd.DataFrame) -> tuple:
+        """
+        Segments the results DataFrame into specific hardware and date-based indices 
+        to apply correct camera parameters (focal length, sensor size).
+        
+        Args:
+            results (pd.DataFrame): DataFrame containing YOLO results and 'CollectID'.
+
+        Returns:
+            tuple: A tuple of indices (NF_idx, ABS1_idx, ... REMUS03243_idx).
+        """
         collect_id = results['CollectID']
+        # Extract metadata from CollectID
         CAM = collect_id.apply(lambda cid: cid.split('_')[-1])
         DRONE = collect_id.apply(lambda cid: cid.split('_')[-2])
-        CD = collect_id.apply(lambda cid: int(cid.split('_')[0]))
+        CD = collect_id.apply(lambda cid: int(cid.split('_')[0])) # Date integer
+
+        # Indices for records where detection failed (No Fish/No Bounds)
         NF_idx = results[results.x.isna() & results.y.isna() & results.w.isna() & results.h.isna()].index
+        
+        # Camera and Drone Indices
         ABS1_idx = collect_id[CAM == "ABS1"].index
         ABS2_idx = collect_id[CAM == "ABS2"].index
         Iver3069_idx = collect_id[DRONE == "Iver3069"].index
         Iver3098_idx = collect_id[DRONE == "Iver3098"].index
         REMUS03243_idx = collect_id[DRONE == "REMUS03243"].index
+
+        # ABS2 indices broken down by Drone and Date (Focal Length switch)
         ABS2_3069_12mm_idx = ABS2_idx.intersection(Iver3069_idx).intersection(CD[CD >= 20220716].index).intersection(CD[CD < 20220822].index)
         ABS2_3069_16mm_idx = ABS2_idx.intersection(Iver3069_idx).intersection(CD[CD >= 20220822].index)
         ABS2_3098_12mm_idx = ABS2_idx.intersection(Iver3098_idx).intersection(CD[CD >= 20220706].index).intersection(CD[CD < 20220819].index)
         ABS2_3098_16mm_idx = ABS2_idx.intersection(Iver3098_idx).intersection(CD[CD >= 20220819].index)
-        assert len(ABS1_idx) + len(ABS2_3069_12mm_idx) + len(ABS2_3069_16mm_idx) + len(ABS2_3098_12mm_idx) + len(ABS2_3098_16mm_idx) + len(REMUS03243_idx) == len(results)
-        assert len(ABS1_idx) + len(ABS2_idx) + len(REMUS03243_idx) == len(results)
+        
+        # Assertion ensures all non-NF records are categorized into a specific hardware configuration.
+        # This checks that the sum of all categorized subsets equals the total length.
+        # NOTE: This assertion assumes all ABS2 data falls into one of the four date/drone categories.
+        # Data that is ABS2 but from a different drone or date range will fail this check.
+        total_categorized = (
+            len(ABS1_idx) + 
+            len(ABS2_3069_12mm_idx) + 
+            len(ABS2_3069_16mm_idx) + 
+            len(ABS2_3098_12mm_idx) + 
+            len(ABS2_3098_16mm_idx) + 
+            len(REMUS03243_idx)
+        )
+        assert total_categorized == len(results), "Total categorized data does not equal total data length."
+        
+        # Removed the redundant and incorrect assertion: len(ABS1_idx) + len(ABS2_idx) + len(REMUS03243_idx) == len(results)
+
         return NF_idx, ABS1_idx, ABS2_idx, ABS2_3069_12mm_idx, ABS2_3069_16mm_idx, ABS2_3098_12mm_idx, ABS2_3098_16mm_idx, REMUS03243_idx
 
+
+    # --- Area and Pixel Size Calculation ---
     @staticmethod
-    def area_and_pixel_size(results):
+    def area_and_pixel_size(results: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies camera parameters based on indices and calculates the Horizontal 
+        Field of View (HFOV), Pixel Size (PS_mm), and Image Area (m^2).
+
+        Args:
+            results (pd.DataFrame): Results DataFrame containing 'CollectID', 
+                                    'DistanceToBottom_m', 'imh', and 'imw'.
+
+        Returns:
+            pd.DataFrame: The results DataFrame with new columns 'PS_mm' and 'ImageArea_m2'.
+        """
         results = results.copy()
         l = results.shape[0]
-        h_ = np.zeros(l)
-        f = np.zeros(l)
-        N = np.zeros(l)
-        W = results['DistanceToBottom_m'] * 1000
+        
+        # Initialize parameter arrays
+        h_ = np.zeros(l) # Horizontal Sensor Width (mm)
+        f = np.zeros(l)  # Focal Length (mm)
+        N = np.zeros(l)  # Number of Horizontal Pixels
+        
+        # Convert working distance (W) to mm
+        W = results['DistanceToBottom_m'] * 1000 
+        
+        # Get indices for parameter assignment
         NF_idx, ABS1_idx, ABS2_idx, ABS2_3069_12mm_idx, ABS2_3069_16mm_idx, ABS2_3098_12mm_idx, ABS2_3098_16mm_idx, REMUS03243_idx = ResultsUtils.indices(results)
-        N[ABS1_idx] = N[ABS2_idx] = N[REMUS03243_idx] = 4112
+
+        # Assign Sensor Width (h_) and Horizontal Pixel Count (N)
+        N[ABS1_idx] = N[ABS2_idx] = N[REMUS03243_idx] = 4112 # CHECK: Verify N is 4112 for all three cameras
         h_[ABS1_idx], h_[ABS2_idx], h_[REMUS03243_idx] = 14.2, 14.1, 13.9
+
+        # Handle NaNs (missing YOLO results) by setting bbox dimensions to 0
         x, y, w, h = results.x.copy(), results.y.copy(), results.w.copy(), results.h.copy()
         x[NF_idx], y[NF_idx], w[NF_idx], h[NF_idx] = 0, 0, 0, 0
         results.x, results.y, results.w, results.h = x, y, w, h
+
+        # Assign Focal Length (f) based on hardware configuration
+        f[ABS1_idx] = 16
+        f[ABS2_3069_12mm_idx], f[ABS2_3098_12mm_idx], f[REMUS03243_idx] = 12, 12, 12
+        f[ABS2_3069_16mm_idx], f[ABS2_3098_16mm_idx] = 16, 16
+        f = f.astype(int) # Ensure focal length is integer type
+
+        # 1. Calculate Horizontal Field of View (HFOV) in mm
+        # Formula: HFOV = (Sensor Width / Focal Length) * Working Distance
+        HFOV = FishScale.HFOV_func(W, h_, f) 
+        
+        # 2. Calculate Pixel Size (PS) in mm/pixel
+        PS = FishScale.PS_func(HFOV, N)
+        results['PS_mm'] = PS
+        
+        # 3. Calculate Image Area
         imgh, imgw = results.imh.astype(int), results.imw.astype(int)
-        f[ABS1_idx], f[ABS2_3069_12mm_idx], f[ABS2_3069_16mm_idx] = 16, 12, 16
-        f[ABS2_3098_12mm_idx], f[ABS2_3098_16mm_idx], f[REMUS03243_idx] = 12, 16, 12
-        f = f.astype(int)
-        HFOV = ImageArea.HFOV_func(W, h_, f)
-        PS = ImageArea.PS_func(HFOV, N)
-        results.PS_mm = PS
         image_ratio = imgh / imgw
-        VFOV = image_ratio * HFOV
-        area = (HFOV * VFOV) / 1e6
-        results.ImageArea_m2 = area
+        VFOV = image_ratio * HFOV # VFOV = HFOV * (Vertical Pixels / Horizontal Pixels)
+        area = (HFOV * VFOV) / 1e6 # Convert mm^2 to m^2
+        results['ImageArea_m2'] = area
+        
         return results
 
-    @staticmethod
-    def calc_fish_wt(results):
-            # Calculate the pixel size of the fish box, multiplied by 1 or 0 set by the conf_threshold
-            results['box_DL_px'] = ImageArea.DL_px_func(
-                results['w'] * results['imw'] * results['conf_pass'],
-                results['h'] * results['imh'] * results['conf_pass']
-            )
-            results['box_DL_px'] = results['box_DL_px'].fillna(0)
-            # Convert YOLO diagonal length to polynomial length
-            results['box_DL_Cor_px'] = ImageArea.correct_DL_px_func(
-                results['box_DL_px'], results['conf_pass']
-            )
-            results['box_DL_mm'] = ImageArea.calc_DL_mm_func(
-                results['box_DL_Cor_px'], results['PS_mm']
-            )
-            results['box_DL_mm'] = results['box_DL_mm'].fillna(0)
-            # Estimate fish weight based on the linear regression for converting fish length to weight
-            results['box_DL_weight_g'] = ImageArea.calc_weight_func(results['box_DL_mm'])
-            return results
 
+    # --- Uncorrected Weight Calculation ---
     @staticmethod
-    def calc_fish_wt_corr(results):
-            ''' The calculated scaling factor using the calibration images'''
-            NF_idx, ABS1_idx, ABS2_idx, ABS2_3069_12mm_idx, ABS2_3069_16mm_idx, ABS2_3098_12mm_idx, ABS2_3098_16mm_idx, REMUS03243_idx = ResultsUtils.indices(results)
-            SF = np.zeros(len(results))
-            ''' Use the following scaling factor if the original images have not been undistorted '''
-            SF[ABS1_idx] = 1.295 * 0.9
-            SF[ABS2_3069_12mm_idx] = 1.018675609 * 0.9
-            SF[ABS2_3069_16mm_idx] = 0.90795 * 0.9
-            SF[ABS2_3098_12mm_idx] = 1.018675609 * 0.9
-            SF[ABS2_3098_16mm_idx] = 0.90795 * 0.9
-            SF[REMUS03243_idx] = 1  # <------------------------------------------------- PLACEHOLDER Needs to be calibrated
-            assert len(SF[ABS1_idx]) + len(SF[ABS2_3069_12mm_idx]) + len(SF[ABS2_3069_16mm_idx]) + len(SF[ABS2_3098_12mm_idx]) + len(SF[ABS2_3098_16mm_idx]) + len(SF[REMUS03243_idx]) == len(results)
+    def calc_fish_wt(results: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculates the object diagonal length and estimated weight using the 
+        standard size-to-weight model, without final distortion correction.
 
-            results['box_DL_mm_corr'] = ImageArea.apply_scaling_func(
-                results['box_DL_mm'], SF
-            )
-            results['box_DL_mm_corr'] = results['box_DL_mm_corr'].fillna(0)
-            results['box_DL_weight_g_corr'] = ImageArea.calc_weight_func(results['box_DL_mm_corr'])
-            return results
+        Args:
+            results (pd.DataFrame): Results DataFrame containing bounding box 
+                                    dimensions and 'conf_pass'.
+
+        Returns:
+            pd.DataFrame: DataFrame with new columns for uncorrected length and weight.
+        """
+        # FIX: The 'conf_pass' factor is removed here to prevent double-application.
+        # The correct_DL_px_func will apply 'conf_pass' once.
+        
+        # 1. Calculate the diagonal length of the bounding box in PIXELS
+        results['box_DL_px'] = FishScale.DL_px_func(
+            results['w'] * results['imw'], # width_norm * imw = width_pixels
+            results['h'] * results['imh']  # height_norm * imh = height_pixels
+        )
+        results['box_DL_px'] = results['box_DL_px'].fillna(0)
+        
+        # 2. Apply polynomial correction (includes single application of conf_pass)
+        results['box_DL_Cor_px'] = FishScale.correct_DL_px_func(
+            results['box_DL_px'], results['conf_pass']
+        )
+        
+        # 3. Convert corrected diagonal length to mm
+        results['box_DL_mm'] = FishScale.calc_DL_mm_func(
+            results['box_DL_Cor_px'], results['PS_mm']
+        )
+        results['box_DL_mm'] = results['box_DL_mm'].fillna(0)
+        
+        # 4. Estimate object weight (g)
+        results['box_DL_weight_g'] = FishScale.calc_weight_func(results['box_DL_mm'])
+        
+        return results
+
+    # --- Corrected Weight Calculation ---
+    @staticmethod
+    def calc_fish_wt_corr(results: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies a calibration-derived Scaling Factor (SF) to correct for lens 
+        distortion and calculates the final corrected length and weight.
+
+        Args:
+            results (pd.DataFrame): Results DataFrame containing 'box_DL_mm'.
+
+        Returns:
+            pd.DataFrame: DataFrame with final corrected length and weight columns.
+        """
+        NF_idx, ABS1_idx, ABS2_idx, ABS2_3069_12mm_idx, ABS2_3069_16mm_idx, ABS2_3098_12mm_idx, ABS2_3098_16mm_idx, REMUS03243_idx = ResultsUtils.indices(results)
+        SF = np.zeros(len(results))
+        
+        ''' Use the following scaling factor if the original images have not been undistorted (all SFs multiplied by 0.9)'''
+        SF[ABS1_idx] = 1.295 * 0.9
+        SF[ABS2_3069_12mm_idx] = 1.018675609 * 0.9
+        SF[ABS2_3069_16mm_idx] = 0.90795 * 0.9
+        SF[ABS2_3098_12mm_idx] = 1.018675609 * 0.9
+        SF[ABS2_3098_16mm_idx] = 0.90795 * 0.9
+        SF[REMUS03243_idx] = 1  # <------------------------------------------------- PLACEHOLDER Needs to be calibrated
+        
+        # The assertion checks that every row in the DataFrame has been assigned an SF.
+        total_assigned_sf = (
+            len(SF[ABS1_idx]) + 
+            len(SF[ABS2_3069_12mm_idx]) + 
+            len(SF[ABS2_3069_16mm_idx]) + 
+            len(SF[ABS2_3098_12mm_idx]) + 
+            len(SF[ABS2_3098_16mm_idx]) + 
+            len(SF[REMUS03243_idx])
+        )
+        assert total_assigned_sf == len(results), "Not all records were assigned a Scaling Factor (SF)."
+
+        # Apply scaling factor
+        results['box_DL_mm_corr'] = FishScale.apply_scaling_func(
+            results['box_DL_mm'], SF
+        )
+        results['box_DL_mm_corr'] = results['box_DL_mm_corr'].fillna(0)
+        
+        # Recalculate weight with the corrected length
+        results['box_DL_weight_g_corr'] = FishScale.calc_weight_func(results['box_DL_mm_corr'])
+        
+        return results

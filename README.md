@@ -10,62 +10,66 @@ In Progress
 
 # Python Scripts
 
-**runResults.py:** acts as a wrapper or launcher for the pipeline, orchestrating the execution of the other two scripts:
-This script is intended to be run by the user. It parses command-line arguments (using argparse) and then constructs a command to call batchPredict+results.py as a subprocess, passing along all relevant arguments. It does not itself perform prediction or results processing, but delegates these tasks.
-
-**batchPredict+results.py:**
-This script is called by runResults.py. It also parses arguments, then:
-
-Calls **batchpredict.py** (again as a subprocess) to perform the actual YOLO inference and prediction, saving results to CSV.
-After predictions are complete, it processes the results (using the YOLOResults class) to generate final output tables, such as summary CSVs.
+**runResults.py:** acts as a wrapper or launcher for the pipeline, orchestrating the execution of the other batchpredict script:
+This script is intended to be run by the user. It parses command-line arguments (using argparse) and then calls abatch predict function, passing along all relevant arguments. It does not itself perform prediction or results processing, but delegates these tasks. After predictions are complete, it processes the results (using the YOLOResults class) to generate final output tables, such as summary CSVs. It also combines the output summary csvs with the defined metadata (most critically the image-wise altitude) to produce the final "results" table which includes image scaling and sizing of the objects detected.
 
 **batchpredict.py**:
-This script is called by batchPredict+results.py. It performs the core YOLO inference and prediction, saving the raw predictions (and optionally label comparisons) to CSV files.
+This script performs the core YOLO inference and prediction processing the images in batches, saving the raw predictions (and optionally label comparisons) to CSV files. This does not do image scaling or require metadata.
 
 **Why this structure?**  
 - Each script has a focused responsibility:
   - `runResults.py`: User interface and pipeline launcher.
-  - `batchPredict+results.py`: Pipeline manager, chaining prediction and results processing.
   - `batchpredict.py`: Core prediction logic.
 - Modular and flexible: Each stage can be run independently.
 - Arguments are parsed at each stage for flexible configuration.
 
 **Summary:**  
-`runResults.py` → `batchPredict+results.py` → `batchpredict.py`  
-Each script passes arguments and results to the next stage.
+`runResults.py` → `batchpredict.py`  
+The runResults script passes it's arguments and results to the batchpredict stage.
 
-## batchpredict.py
-Batch inference script for YOLOv8. Processes images in batches, saves predictions and labels to CSV, and supports overlays and cage label output.
+**Also supports [SAHI](https://github.com/obss/sahi) tiled inference for large images.**
 
-**Now supports [SAHI](https://github.com/obss/sahi) tiled inference for large images.**
+Here are the parameters and expected outputs formatted in Markdown tables for your `README.md`.
 
-    Parameters:
-    ----------
-        --img_directory: Directory of images for inference.
-        --img_list_csv: CSV file listing image paths.
-        --lbl_list_csv: CSV file listing label paths.
-        --weights: Path to YOLO model weights.
-        --output_name: Output folder name.
-        --batch_size: Number of images per batch.
-        --confidence: Minimum confidence threshold.
-        --has_labels: If provided, compares predictions to ground truth labels.
-        --has_cages: If provided, calculates fish intersection with quadrats.
-        --plot: Save overlay images.
-        --verify: Verify images before processing.
-        --sahi_tiled: Enable SAHI tiled inference (for large images).
-        --tile_size: Tile size for SAHI tiled inference (default: 1024).
-        --tile_overlap: Tile overlap ratio for SAHI tiled inference (default: 0.2).
+## Command-Line Parameters
 
-    Returns:
-    -------
-        - CSV files with predictions, labels, and scores.
-        - Overlay images if requested.
+The following arguments can be used when running the scripts.
 
-    Notes:
-    ------
-    - When `--sahi_tiled` is enabled, images are processed in overlapping tiles using SAHI, which can improve detection on large images.
-    - Tile size and overlap can be controlled with `--tile_size` and `--tile_overlap`.
-    - All other features (labels, overlays, cages) are supported with SAHI as well.
+| Category     | Parameter         | Description                                                         | Supported In |
+|--------------|-------------------|---------------------------------------------------------------------|--------------|
+| **Common**   | `--weights`       | Path to model weights (.pt).                                        | All          |
+|              | `--output_name`   | Name of the subfolder for results/logs.                             | All          |
+|              | `--batch_size`    | Number of images per batch (use -1 for AutoBatch in Train).         | All          |
+| **Training** | `--data_yml`      | Path to the dataset configuration file.                             | Train/Val    |
+|              | `--epochs`        | Total number of training iterations.                                | Train        |
+|              | `--patience`      | Epochs to wait for improvement before early stopping.               | Train        |
+| **Inference**| `--img_directory` | Directory of images for processing.                                 | Predict      |
+|              | `--sahi_tiled`    | Enables Sliced Aided Hyper Inference for large images.              | Predict      |
+|              | `--confidence`    | Minimum confidence for a detection to be recorded.                  | Predict/Val  |
+| **Results**  | `--metadata`      | Path to the metadata CSV for post-processing.                       | Predict      |
+|              | `--has_labels`    | Compare detections against ground truth labels.                     | Predict      |
+
+### Expected Outputs
+
+The pipeline generates various files based on the flags provided.
+
+| Output Type | Filename / Location | Description |
+| --- | --- | --- |
+| **Predictions** | `predictions.csv` | Raw model output including coordinates and confidence. |
+| **Labels** | `labels.csv` | Processed ground truth labels used for comparison. |
+| **Scoring** | `scores.csv` | Accuracy metrics generated when `--has_labels` is used. |
+| **Results** | `inference_results_{conf}.csv` | Final output table including metadata and substrate data. |
+| **Overlays** | `/overlays` folder | Visualized detection boxes drawn over original images. |
+| **Logs** | `run_log_{timestamp}.log` | Detailed execution log including parameters and timestamps. |
+
+---
+
+### Implementation Notes
+
+* **SAHI Tiling**: When `--sahi_tiled` is enabled, images are automatically sliced into overlapping tiles to improve small object detection on large frames.
+* **Auto-Sizing**: The script includes logic to automatically adjust tile sizes and overlaps for specific image resolutions, such as `3000x4096` or `2176x4096`.
+* **Feature Support**: All standard features—including label comparison, plotting, and cage calculations—are fully compatible with SAHI tiled inference.
+
 
 ## batchpredict+results.py
 Runs batch prediction and then processes results, merging YOLO outputs with metadata and other tables.

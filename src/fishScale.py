@@ -119,7 +119,7 @@ class FishScale:
     def calc_weight(box_DL_mm):
         """
         Calculates the estimated object weight (e.g., fish weight) from its length 
-        using a standard Length-Weight relationship ($W = a \cdot L^b$).
+        using a standard Length-Weight relationship (W = a * L^b).
 
         Args:
             box_DL_mm (float/ndarray): Object diagonal length (L) in mm.

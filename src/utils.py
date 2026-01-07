@@ -256,19 +256,19 @@ class Utils:
                 if overwrite == True:
                     nm = os.path.basename(pth)
                     new_pth = os.path.join(dest, nm)
-                    print("sample", i,'/',n_files, end='  \r')
+                    print("copy file", i,'/',n_files, end='  \r')
                     shutil.copy2(pth, new_pth)
                 elif overwrite == False:
                     org_sz = os.path.getsize(pth)
                     nm = os.path.basename(pth)
                     new_pth = os.path.join(dest, nm)
                     if not os.path.exists(new_pth):
-                        print("sample", i,'/',n_files, end='  \r')
+                        print("copy file", i,'/',n_files, end='  \r')
                         shutil.copy2(pth, new_pth)
                     else:
                         exist_size = os.path.getsize(new_pth)
                         if org_sz != exist_size:
-                            print("sample", i,'/',n_files, end='  \r')
+                            print("copy file", i,'/',n_files, end='  \r')
                             shutil.copy2(pth, new_pth)
                         else: continue #the exact file name and size already exists
             else: continue

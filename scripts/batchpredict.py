@@ -24,7 +24,7 @@ def parse_arguments():
     parser.add_argument('--img_directory', default=None, help='Directory of Images')
     parser.add_argument('--img_list_csv', default=None, help='Path to csv list of image paths')
     parser.add_argument('--lbl_list_csv', default=None, help='Path to csv list of label paths')
-    parser.add_argument('--weights', default=r"path\to\weights.pt", help='Trained weights path')
+    parser.add_argument('--weights', default=r"path\to\weights.pt", help='any yolov8/yolov9/yolo11/yolo12/rt-detr det model is supported')
     parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
     parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
     parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
@@ -98,8 +98,7 @@ def save_labels_to_csv(df, csv_path):
     df['ground_truth_id'] = df['Filename'] + "_" + df.index.astype('str')
     df.to_csv(csv_path, header=True)
 
-
-def main():
+def run_batch_inference(args):
     setup_environment()
     start_time = stopwatch()
     torch.cuda.empty_cache()
@@ -108,8 +107,6 @@ def main():
     now = datetime.now()
     name_time = now.strftime("%Y%m%d%H%M")
 
-    # get args
-    args = parse_arguments()
     # output_name = os.path.join(args.output_name + "_" + name_time)
     output_name = args.output_name
     # Setup paths and logging
@@ -244,8 +241,10 @@ def main():
     print("Done!")
 
 if __name__ == '__main__':
-    # Example usage:
-    # python scripts/predict.py --img_directory path/to/images --weights path/to/model.pt --output_name my_output --batch_size 8 --confidence 0.3 --has_labels 
-    # python scripts/predict.py --img_list_csv path/to/labels.csv --lbl_list_csv path/to/labels.csv --weights path/to/model.pt --output_name my_output --batch_size 8 --confidence 0.3 --has_labels 
-    main()
+    args = parse_arguments()
+    run_batch_inference(args)
+
+# Example usage:
+# python scripts/predict.py --img_directory path/to/images --weights path/to/model.pt --output_name my_output --batch_size 8 --confidence 0.3 --has_labels 
+# python scripts/predict.py --img_list_csv path/to/labels.csv --lbl_list_csv path/to/labels.csv --weights path/to/model.pt --output_name my_output --batch_size 8 --confidence 0.3 --has_labels 
 

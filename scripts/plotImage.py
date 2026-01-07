@@ -12,40 +12,24 @@ from utils import Utils
 def parse_arguments():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="Visualize labels and bounding boxes on images.")
-    
-    # Required argument: directory
-    parser.add_argument('--directory', type=str, required=True,
-                        help="Path to the parent directory which contains 'images' and 'labels' subdirectories, or 'images.txt' and 'labels.txt' files.")
-    
+    parser.add_argument('--directory', type=str, required=True, help="Path to the parent directory which contains 'images' and 'labels' subdirectories, or 'images.txt' and 'labels.txt' files.")
+    parser.add_argument('--list_file', action='store_true', help="If set, read file paths from 'images.txt' and 'labels.txt' in the --directory.")
     # Visualization Mode arguments (Mutually Exclusive Group)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--index', type=int, default=None,
-                       help="Plot the image/label at a specific index from the sorted list of files.")
-    group.add_argument('--random', action='store_true',
-                       help="Plot a random image/label pair.")
-
+    group.add_argument('--index', type=int, default=None, help="Plot the image/label at a specific index from the sorted list of files.")
+    group.add_argument('--random', action='store_true', help="Plot a random image/label pair.")
     # Optional arguments for file path discovery
-    parser.add_argument('--list_file', action='store_true',
-                        help="If set, read file paths from 'images.txt' and 'labels.txt' in the --directory.")
-    
-    # Optional arguments for file type selection
-    parser.add_argument('--labels_only', action='store_true',
-                        help="Process only label files. Requires --image_width and --image_height.")
-    parser.add_argument('--images_only', action='store_true',
-                        help="Process only image files.")
-    
+        # Optional arguments for file type selection
+    parser.add_argument('--labels_only', action='store_true', help="Process only label files. Requires --image_width and --image_height.")
+    parser.add_argument('--images_only', action='store_true', help="Process only image files.")
     # Arguments required for 'labels_only' mode
-    parser.add_argument('--image_width', type=int, default=None,
-                        help="Required image width for calculating absolute bounding box coordinates in --labels_only mode.")
-    parser.add_argument('--image_height', type=int, default=None,
-                        help="Required image height for calculating absolute bounding box coordinates in --labels_only mode.")
-    
+    parser.add_argument('--image_width', type=int, default=None, help="Required image width for calculating absolute bounding box coordinates in --labels_only mode.")
+    parser.add_argument('--image_height', type=int, default=None, help="Required image height for calculating absolute bounding box coordinates in --labels_only mode.")
     args = parser.parse_args()
     
     # Enforce dimension arguments in labels_only mode
     if args.labels_only and (args.image_width is None or args.image_height is None):
         parser.error("Error: --image_width and --image_height are required in --labels_only mode.")
-        
     return args
 
 
@@ -97,7 +81,8 @@ def main():
     """Main function to parse arguments, get paths, and display overlays."""
     args = parse_arguments()
     image_paths, label_paths = get_file_paths(args)
-    plot_index = 0
+
+    plot_index = args.index if args.index is not None else random.randint(0,len(image_paths)-1)
     
     # 1. Determine the index to plot
     if args.index is not None:

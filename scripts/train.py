@@ -7,7 +7,28 @@ from ultralytics import YOLO, checks
 import torch
 from pathlib import Path # <-- 1. ADD THIS IMPORT
 
-# --- Logger class to tee output to both file and terminal ---
+"""
+YOLOv8 Training Module for Goby Detection
+
+This script facilitates the training of YOLOv8 models. It includes automated 
+environment setup, CUDA device verification, and comprehensive logging.
+
+Key Features:
+    - POSIX Path Resolution: Ensures compatibility with Ultralytics path requirements.
+    - Automated Logging: 'Tees' all console output to a timestamped log file.
+    - Resource Management: Clears CUDA cache and verifies device availability before start.
+    - Flexible Hyperparameters: Supports custom learning rates, optimizers, and warmup phases.
+
+Args:
+    weights (str): Initial model weights (e.g., 'yolov8x.pt').
+    data_yml (str): Path to the dataset YAML.
+    img_size (int): Image resolution for training (default 2048).
+    resume (bool): If True, resumes training from the last checkpoint in the project folder.
+
+Output:
+    - Log File: Saved in 'output/training/{output_name}/'
+    - Weights: Trained model checkpoints saved by the YOLO engine.
+"""
 class Logger(object):
     def __init__(self, filename):
         self.terminal = sys.stdout
@@ -38,7 +59,6 @@ def parse_arguments():
     parser.add_argument('--warmup_momentum', default=0.8, type=float, help="Initial momentum during the warmup phase.")
     parser.add_argument('--optimizer', default='auto', help="Automatically selects the optimizer (often defaults to SGD for detection/segmentation).")
     parser.add_argument('--note', default="training run", help='Additional notes to append on the training run')
-    # Re-adding single_cls as a boolean flag. It should be False (default) for 6 classes.
     parser.add_argument('--single_cls', action='store_true', help='Treats all classes as a single class (only use for binary classification).') 
     parser.set_defaults(resume=False)
     return parser.parse_args()
@@ -58,11 +78,10 @@ def display_cuda_info():
         print("No CUDA devices found. Using CPU.")
     print("Number of devices:", device_count)
 
-def main():
+def run_training(args):
     start_time = stopwatch()
     
     # --- 1. Setup paths and parse arguments early ---
-    args = parse_arguments()
     name_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     training_run_folder = os.path.join("output", "training", args.output_name)
     os.makedirs(training_run_folder, exist_ok=True)
@@ -132,4 +151,5 @@ def main():
     print("--- Training Run Complete ---")
 
 if __name__ == '__main__':
-    main()
+    args = parse_arguments()
+    run_training(args)

@@ -5,7 +5,7 @@ from tqdm import tqdm # Import tqdm
 
 # --- Configuration ---
 # 1. Define the base directory for your labels
-BASE_LABEL_DIR = r"Z:\__Organized_Directories_InProgress\GobyFinderDatasets\AUV_datasets\full\labels" # Adjust this path to your actual label directory
+BASE_LABEL_DIR = r"D:\datasets\full\train\labels" # Adjust this path to your actual label directory
 
 # 2. Define the file extension for your label files
 LABEL_EXTENSION = ".txt"

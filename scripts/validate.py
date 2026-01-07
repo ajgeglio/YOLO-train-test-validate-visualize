@@ -6,7 +6,31 @@ from timeit import default_timer as stopwatch
 import torch
 import os
 import sys
+"""
+YOLOv8 Validation Module
 
+This script performs validation on a trained YOLOv8 model using a dataset 
+defined in a YAML file. It computes standard object detection metrics 
+and exports results to CSV.
+
+Attributes:
+    metrics.box.p (list): Precision for each class at specified IoU.
+    metrics.box.r (list): Recall for each class.
+    metrics.box.f1 (list): F1 score for each class.
+    metrics.box.all_ap (list): Average Precision (AP) for all classes across 10 IoU thresholds.
+    metrics.box.map (float): Mean Average Precision (mAP) over all IoU thresholds.
+    metrics.box.map50 (float): mAP at an IoU threshold of 0.50.
+
+Methods:
+    model.val(): Executes validation logic, returning a DetMetrics object.
+    results_dict: Accesses a dictionary mapping metric keys to their computed values.
+    curves_results: Retrieves data for plotting Precision-Recall and F1-Confidence curves.
+
+Outputs:
+    - {output_name}_metrics.csv: Summary of precision, recall, f1, and mAP.
+    - {output_name}_curves.csv: Raw data for validation curves.
+    - {output_name}_log.txt: Terminal output log.
+"""
 # Define a simple logging class to tee output to both console and a file
 class Logger(object):
     def __init__(self, filename):
@@ -34,11 +58,9 @@ def parse_arguments():
     parser.add_argument('--iou', dest='iou', default=0.6, type=float, help='Sets the Intersection Over Union (IoU) threshold for Non-Maximum Suppression (NMS). Helps in reducing duplicate detections.')
     return parser.parse_args()
 
-if __name__ == '__main__':
+def run_validation(args):    
     start_time = stopwatch()
-    
     # --- Logging Setup ---
-    args = parse_arguments()
     folder = os.path.join("output", "validation", "detect", args.output_name)
     os.makedirs(folder, exist_ok=True)
     log_file_path = os.path.join(folder, f"{args.output_name}_log.txt")
@@ -93,25 +115,7 @@ if __name__ == '__main__':
     end_time = stopwatch()
     print(f"\nTotal execution time: {end_time - start_time:.2f} seconds")
 
-'''
-        Attributes:
-        p (list): Precision for each class. Shape: (nc,).
-        r (list): Recall for each class. Shape: (nc,).
-        f1 (list): F1 score for each class. Shape: (nc,).
-        all_ap (list): AP scores for all classes and all IoU thresholds. Shape: (nc, 10).
-        ap_class_index (list): Index of class for each AP score. Shape: (nc,).
-        nc (int): Number of classes.
 
-
-    Methods:
-    process(tp, conf, pred_cls, target_cls): Updates the metric results with the latest batch of predictions.
-    keys: Returns a list of keys for accessing the computed detection metrics.
-    mean_results: Returns a list of mean values for the computed detection metrics.
-    class_result(i): Returns a list of values for the computed detection metrics for a specific class.
-    maps: Returns a dictionary of mean average precision (mAP) values for different IoU thresholds.
-    fitness: Computes the fitness score based on the computed detection metrics.
-    ap_class_index: Returns a list of class indices sorted by their average precision (AP) values.
-    results_dict: Returns a dictionary that maps detection metric keys to their computed values.
-    curves: TODO
-    curves_results: TODO
-'''
+if __name__ == '__main__':
+    args = parse_arguments()
+    run_validation(args)

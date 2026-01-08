@@ -1,35 +1,86 @@
 # Name
-Goby Finder with Yolov8
+Goby Finder with YOLO
 
 # Description
-This is a codebase for the Yolov8x object detector, trained on images of Round Goby in AUV images, and to generate a proxy of size and quantity of fish in AUV data.
+This is a codebase for the Ultralytics YOLOv8x object detector, trained on images of Round Goby in AUV images, and to generate a proxy of size and quantity of fish in AUV data.
 
 # Project status
-
 In Progress
 
-# Python Scripts
+---
 
-**runResults.py:** acts as a wrapper or launcher for the pipeline, orchestrating the execution of the other batchpredict script:
-This script is intended to be run by the user. It parses command-line arguments (using argparse) and then calls abatch predict function, passing along all relevant arguments. It does not itself perform prediction or results processing, but delegates these tasks. After predictions are complete, it processes the results (using the YOLOResults class) to generate final output tables, such as summary CSVs. It also combines the output summary csvs with the defined metadata (most critically the image-wise altitude) to produce the final "results" table which includes image scaling and sizing of the objects detected.
+## scripts/ — Folder organization
 
-**batchpredict.py**:
-This script performs the core YOLO inference and prediction processing the images in batches, saving the raw predictions (and optionally label comparisons) to CSV files. This does not do image scaling or require metadata.
+The `scripts/` folder contains the main user processing interface for executing the source code in the src folder. Scripts have been organized into focused subfolders and a set of top-level helper scripts. The structure below reflects the current layout discovered in the repository and short descriptions of each script or folder's functionality.
 
-**Why this structure?**  
-- Each script has a focused responsibility:
-  - `runResults.py`: User interface and pipeline launcher.
-  - `batchpredict.py`: Core prediction logic.
-- Modular and flexible: Each stage can be run independently.
-- Arguments are parsed at each stage for flexible configuration.
+Note: repository search results were limited and may be incomplete. View the scripts folder in the GitHub UI for the most up-to-date listing:
+https://github.com/ajgeglio/YOLO-train-test-validate-visualize/tree/main/scripts
 
-**Summary:**  
-`runResults.py` → `batchpredict.py`  
-The runResults script passes it's arguments and results to the batchpredict stage.
+Tree (current):
+```
+scripts/
+├─ classification/
+│  ├─ rfClassify.py            # Random Forest classification helper / inference script
+│  ├─ trainRF.py               # Train Random Forest classifier
+│  └─ validateCLS.py           # Validation script for classification models
+├─ detect/
+│  ├─ batchpredict.py          # Core YOLO batched inference + CSV outputs (predictions/labels)
+│  ├─ predict+overlay.py       # Single-batch inference and overlay generation (color-coded if labels)
+│  ├─ runResults.py            # Pipeline launcher / wrapper that calls batchpredict, summarizes results and object sizing managing the arguments and outputing the summary reports. Requires metadata to generate reports.
+│  ├─ train.py                 # Training wrapper for YOLO (resuming, args, logging)
+│  └─ validate.py              # Validation wrapper (precision/recall/mAP calculations)
+├─ label processing/           # (directory present for label-processing helpers)
+├─ metadata processing/        # (directory present for metadata-processing helpers)
+├─ transect analysis/          # (directory present for transect analysis helpers)
+├─ unittest/                   # (unit tests / test scripts)
+├─ visualizing/                # (visualization and plotting helpers)
+├─ removeLabelDuplicates.py    # Remove duplicate lines from YOLO label .txt files
+├─ cleanFilterLabels.py        # Filter and clean label reports; remove small/invalid objects, backup originals
+├─ runTransect.py              # Run transect summary/report pipeline (merges results, generates summaries)
+├─ labelingTransect.py         # Subsampling / create lists for manual labeling; compare subsampled biomass
+```
+
+Folder summaries and key scripts
+
+- scripts/detect
+  - batchpredict.py
+    - Performs the main YOLO inference pipeline in batches.
+    - Saves raw model outputs to CSV (predictions) and can optionally save label comparisons and overlays.
+    - Supports SAHI tiled inference for large images.
+  - predict+overlay.py
+    - Minimal wrapper for running inference on a batch and creating overlay images.
+    - Color-codes overlays when ground-truth labels are provided.
+  - runResults.py
+    - CLI launcher that parses arguments and orchestrates running batch inference and results post-processing report which includes object sizing based on auv altitude.
+  - train.py
+    - Training loop wrapper for YOLOv8 (resume capability, arg parsing, logging).
+  - validate.py
+    - Validation wrapper that computes precision/recall/mAP and saves validation outputs.
+
+- scripts/classification
+  - trainRF.py, rfClassify.py, validateCLS.py
+    - Tools for extracting features, training, and validating Random Forest classifiers used for post-processing/classification tasks.
+
+- scripts/label processing
+  - removeLabelDuplicates.py
+    - Scans a label folder and removes duplicate lines within each YOLO `.txt` label file (preserves order).
+  - cleanFilterLabels.py
+    - Loads label reports, applies pixel- and weight-based filters, and removes unwanted label lines from .txt files (creates backups when enabled).
+
+- scripts/transect analysis
+  - runTransect.py
+    - High-level script to generate transect reports by merging inference results, metadata, and operation tables; produces transect summary outputs.
+  - labelingTransect.py
+    - Creates subsampled image lists for manual labeling and compares biomass estimates between full vs subsampled transect.
+
+- scripts/visualizing
+  - Contains utilities and scripts for visualizing predictions, PR curves, and other plots used in reporting.
+  
+- scripts/metadata processing
+  - Prepare metadata csv for inference.
 
 **Also supports [SAHI](https://github.com/obss/sahi) tiled inference for large images.**
 
-Here are the parameters and expected outputs formatted in Markdown tables for your `README.md`.
 
 ## Command-Line Parameters
 
@@ -70,26 +121,8 @@ The pipeline generates various files based on the flags provided.
 * **Auto-Sizing**: The script includes logic to automatically adjust tile sizes and overlaps for specific image resolutions, such as `3000x4096` or `2176x4096`.
 * **Feature Support**: All standard features—including label comparison, plotting, and cage calculations—are fully compatible with SAHI tiled inference.
 
+## runResults.py
 
-## batchpredict+results.py
-Runs batch prediction and then processes results, merging YOLO outputs with metadata and other tables.
-
-    Parameters:
-    ----------
-        --img_directory: Directory of images for inference.
-        --weights: Path to YOLO model weights.
-        --output_name: Output folder name.
-        --batch_size: Number of images per batch.
-        --confidence: Minimum confidence threshold that is run during inference (can be filtered later).
-        --metadata: Path to image metadata CSV.
-        --op_table: Path to operations database table.
-        --results_confidence: Confidence threshold for results output table.
-        --has_labels: If provided, compares predictions to ground truth labels.
-        --plot: Save overlay images.
-
-    Returns:
-    -------
-        - CSV file with merged YOLO results and metadata.
 
 ## predict+overlay.py
 Minimal script for applying YOLO weights to a single batch of data and generating overlays. If labels are provided, overlays are color-coded for true/false positives.
@@ -128,7 +161,7 @@ This Python file contains the training loop for a YOLOv8 or other Ultralytics YO
         - Logs of training progress.
         - Trained model weights saved in the specified output directory.
 
-## predict.py
+## batchpredict.py
 This Python file performs inference using a YOLOv8 model. It supports batch processing, label comparison, and optional plotting of predictions.
 
     Parameters:
@@ -143,14 +176,6 @@ This Python file performs inference using a YOLOv8 model. It supports batch proc
     -------
         - CSV files containing predictions and labels (if provided).
         - Optional annotated images with bounding boxes.
-
-## unittester.py
-This Python file contains unit tests for the YOLO inference pipeline. It uses the `unittest` framework to test argument parsing, image loading, and YOLO model predictions.
-
-    Features:
-    ----------
-        - Mock testing for argument parsing and file operations.
-        - Validation of YOLO model predictions and outputs.
 
 ## validate.py
 This Python file validates a YOLOv8 model on a dataset with existing labels. It calculates precision, recall, and mAP metrics and saves validation results.
@@ -180,54 +205,44 @@ This Python file provides a GUI for running inference, testing, and CUDA checks.
 
 # Source code and helper functions
 
-## src/utils.py
+## Source code and helper functions (src/)
 
-This file provides a collection of utility functions and classes for file management, image verification, logging, and data processing. Key components include:
+The repository's core functionality and helper utilities live in the `src/` package. Below is an updated map of the primary source files and a short description of each so the README matches the actual codebase.
 
-- **ReturnTime**: Static methods for converting timestamps to formatted date/time strings.
-- **Utils**: Static methods for:
-    - File and folder listing, filtering, and copying/moving.
-    - Image verification and dimension extraction.
-    - Logging setup.
-    - Generating unique image names and timestamped folders.
-    - DataFrame creation for images and file operations.
-    - Counting and analyzing label/object discrepancies.
-    - Miscellaneous helpers for working with image and label datasets.
+- src/utils.py  
+  General utilities: file/folder helpers, image verification and dimension extraction, logging (Logger), timestamp formatting (ReturnTime), DataFrame helpers, and miscellaneous helpers used across scripts.
 
-## src/predicting.py
+- src/predicting.py  
+  PredictOutput: helpers to parse YOLO result objects, write predictions and labels to CSV, optionally plot overlays, and manage incremental outputs for large inference runs.
 
-Contains the `PredictOutput` class for handling YOLO prediction outputs, label processing, and cage intersection analysis:
+- src/results.py  
+  YOLOResults (and supporting result-processing classes): merges YOLO outputs with metadata and substrate predictions, cleans/aligns columns, computes per-image statistics, calculates pixel size/area and object sizing, and estimates fish weight. (If your workflows reference an LBLResults class, confirm its exact name/location in this file.)
 
-- **PredictOutput**:
-    - `YOLO_predict_w_outut`: Processes YOLO detection results, saves predictions/labels to CSV, and optionally plots overlays.
-    - `YOLO_predict_w_outut_obb`: Similar to above, but for oriented bounding boxes (OBB).
-    - `process_labels`: Loads and parses label files into DataFrames.
-    - `intersection_df`: Calculates intersection between fish and cage bounding boxes, marking if fish are inside cages.
-    - `save_cage_box_label_outut`: Saves intersection analysis results for predictions and ground truth labels.
+- src/reportFunctions.py  
+  Reports: reporting and scoring utilities. Functions to generate summary prints, save/load prediction/label CSVs, compute basic counts/metrics, and orchestrate label-result merges used by higher-level scripts.
 
-## src/results.py
+- src/fishScale.py  
+  FishScale: optical geometry and size-to-weight conversion utilities (AFOV, HFOV, pixel-size/GSD, diagonal length px↔mm, corrected diagonal calculations, and weight estimation functions).
 
-Provides the `YOLOResults` class for merging and processing YOLO inference results, metadata, substrate predictions, and survey operations tables:
+- src/image_area.py  
+  ImageArea: complementary image-area and pixel-size functions used for HFOV/PS/DL calculations and weight/size conversions.
 
-- **YOLOResults**:
-    - `combine_meta_pred_substrate`: Merges YOLO predictions, substrate, and metadata, aligning on filenames and survey IDs.
-    - `clean_yolo_results`: Cleans and aligns columns, assigns detection IDs, and computes per-image statistics.
-    - `indices`: Returns indices for camera/drone types and survey splits.
-    - `area_and_pixel_size`: Calculates image area and pixel size for each detection.
-    - `calc_fish_wt` / `calc_fish_wt_corr`: Estimates fish weight from bounding box size and calibration factors.
-    - `yolo_results`: Main pipeline for producing cleaned, merged, and annotated YOLO results.
+- src/labelUtils.py  
+  Conversion utilities: convert COCO-like JSON or mask-based annotations to YOLO `.txt` labels and other label-format helpers used when creating training/validation label sets.
 
-## src/reports.py
+- src/dataFormatter.py  
+  YOLODataFormatter: transforms raw YOLO outputs and label files into structured Pandas DataFrames (predictions and labels) ready for scoring, plotting, and CSV export.
 
+- src/calculateIOU.py (and related iou utilities)  
+  IoU calculation utilities for axis-aligned boxes (and OBB variants where present). Used by scoring/reporting code to compute IoU between labels and predictions.
+
+- src/samUtils.py  
+  SAM integration helpers (ultralytics SAM): provides SamOverlays utilities to create masks/overlays from boxes or points using a loaded SAM model.
+
+- src/transects.py  
+  Transect analysis helpers: distance-along-track calculations, filtered biomass/biomass density calculations, plotting helpers used by transect scripts like `labelingTransect.py` and `runTransect.py`.
 Contains the `Reports` class for generating evaluation metrics, summaries, and plots for YOLO predictions:
 
-- **Reports**:
-    - `generate_summary`: Prints summary statistics for predictions and labels.
-    - `scores_df` / `scores_df_obb`: Computes precision, recall, and IoU for axis-aligned and oriented bounding boxes.
-    - `return_fn_df`: Identifies false negatives and merges predictions with ground truths.
-    - `calc_AP`, `calculate_f1`, `coco_mAP`: Calculates average precision, F1 scores, and COCO-style mAP.
-    - `plot_PR`, `plot_epoch_time`, `plot_collect_distribution`: Visualization utilities for PR curves, epoch times, and data distributions.
-    - `get_metrics`: Loads and summarizes metrics from saved PR curve CSVs.
 
 These helper modules are used throughout the codebase to streamline data handling, output management, evaluation, and reporting.
 

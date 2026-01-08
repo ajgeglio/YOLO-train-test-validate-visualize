@@ -122,13 +122,12 @@ def run_training(args):
     # Train the model
     print("Starting YOLOv8 training...")
     model.train(
-        data=data_path_posix, # <-- USE THE POSIX PATH
-        # compile="default",
+        data=data_path_posix,
         resume=args.resume,
         pretrained=True,
         epochs=args.epochs,
         imgsz=args.img_size,
-        device=0,
+        device=0, # for multi-gpu [0,1]
         project=training_run_folder,
         half=True,
         amp=True,

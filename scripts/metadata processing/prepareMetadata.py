@@ -7,9 +7,9 @@ import glob
 import sys
 import os
 from typing import Optional, List, Any
-
-from polars import col
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+import pathlib
+SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
+sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 from utils import Utils
 
 # --- Argument Parsing ---
@@ -37,13 +37,16 @@ def parse_args():
     parser.add_argument("--img_directory", type=pathlib.Path, required=False,
         help="Path to the images directory. Used to generate a list of image filenames for filtering."
     )
+    parser.add_argument("--img_list_file", type=pathlib.Path, required=False,
+        help="Path to the image list file. Used to generate a list of image filenames for filtering."
+    )
     parser.add_argument("--tiled", action="store_true",
         help="Metadata must be formatted for a tiled images"
     )
     # Mutually Exclusive Filtering Options
     group = parser.add_mutually_exclusive_group(required=True) # Made group required
     group.add_argument("--image_list_filter", action="store_true",
-        help="Filter metadata based on filenames found in --img_directory."
+        help="Filter metadata based on filenames found in --img_directory or --image_list_file."
     )
     group.add_argument("--goby_collects_filter", action="store_true",
         help="Filter metadata to include only 'GOBY == 1' assessed collects from the OP table."
@@ -107,18 +110,23 @@ def filter_goby_collects(op_table_pth: pathlib.Path) -> pd.Series:
 def return_img_list(args: argparse.Namespace) -> List[str]:
     """Retrieves image filenames from the provided directory."""
     if not args.img_directory:
-        raise ValueError("The --image_list_filter flag requires --img_directory to be provided.")
+        if not args.img_list_file:
+            raise ValueError("The --image_list_filter flag requires --img_directory or --image_list_file to be provided.")
         
-    img_dir = args.img_directory
-    print(f"Searching for images in: {img_dir}")
+    if args.img_directory:
+        img_dir = args.img_directory
+        print(f"Searching for images in: {img_dir}")
+        # Use a more explicit list of extensions
+        extensions = ['*.jpg', '*.tif', '*.png']
+        image_path_list = []
+        
+        for ext in extensions:
+            image_path_list.extend(glob.glob(str(img_dir / ext)))
     
-    # Use a more explicit list of extensions
-    extensions = ['*.jpg', '*.tif', '*.png']
-    image_path_list = []
-    
-    for ext in extensions:
-        image_path_list.extend(glob.glob(str(img_dir / ext)))
-    
+    elif args.img_list_file:
+        image_path_list = Utils.read_list_txt(args.img_list_file)
+        print(f"found {len(image_path_list)} images in: {args.img_list_file}")
+
     if not image_path_list:
         raise ValueError(f"No images found in directory: {img_dir}")  
     if args.tiled:
@@ -126,7 +134,7 @@ def return_img_list(args: argparse.Namespace) -> List[str]:
         filenames = list(map(lambda x: Utils.convert_tile_img_pth_to_basename(x), image_path_list))
     else:
         # Extract only the filenames (base names) for filtering against metadata's 'Filename' column
-        tilenames = None
+        tilenames = []
         filenames = [os.path.basename(p) for p in image_path_list]
 
     return sorted(filenames), sorted(tilenames)

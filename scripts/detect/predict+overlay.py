@@ -2,7 +2,9 @@ from ultralytics import YOLO
 import sys
 import glob
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+import pathlib
+SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
+sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 from dataFormatter import YOLODataFormatter
 from overlayFunctions import Overlays
 from reportFunctions import Reports

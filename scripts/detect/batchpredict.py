@@ -1,7 +1,9 @@
 from datetime import datetime
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+import pathlib
+SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
+sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 from utils import Utils
 from predictingFunctions import BatchOutputProcessor
 from reportFunctions import Reports
@@ -22,8 +24,8 @@ def parse_arguments():
     parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
     parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
     parser.add_argument('--img_directory', default=None, help='Directory of Images')
-    parser.add_argument('--img_list_csv', default=None, help='Path to csv list of image paths')
-    parser.add_argument('--lbl_list_csv', default=None, help='Path to csv list of label paths')
+    parser.add_argument('--img_list_file', default=None, help='Path to .txt or .csv list of image paths')
+    parser.add_argument('--lbl_list_file', default=None, help='Path to .txt or .csv list of label paths')
     parser.add_argument('--weights', default=r"path\to\weights.pt", help='any yolov8/yolov9/yolo11/yolo12/rt-detr det model is supported')
     parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
     parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
@@ -54,11 +56,9 @@ def return_img_list(args):
                       glob.glob(f'{img_dir}/*.[tT][iI][fF]') + \
                       glob.glob(f'{img_dir}/*.[pP][nN][gG]')
         assert len(test_images) > 0, "No images found in directory"
-    elif args.img_list_csv:
-        print("Using img_list_csv")
-        # --- Change made here ---
-        # Use 'utf-8-sig' to automatically handle and remove the Byte Order Mark (BOM)
-        with open(args.img_list_csv, 'r', encoding='utf-8-sig') as f:
+    elif args.img_list_file:
+        print("Using img_list_file argument")
+        with open(args.img_list_file, 'r', encoding='utf-8-sig') as f:
             test_images = f.read().splitlines()
         # ------------------------
         assert len(test_images) > 0, "No image paths found in csv"
@@ -72,12 +72,12 @@ def return_lbl_list(args, test_images):
         dirlbl = os.path.join(os.path.dirname(args.img_directory), "labels")
         print("Label directory:", dirlbl)
         test_labels = glob.glob(os.path.join(dirlbl, "*.txt"))
-    elif args.lbl_list_csv:
-        with open(args.lbl_list_csv, 'r') as f:
+    elif args.lbl_list_file:
+        with open(args.lbl_list_file, 'r') as f:
             test_labels = f.read().splitlines()
-    elif args.img_list_csv and args.has_labels and not args.lbl_list_csv:
+    elif args.img_list_file and args.has_labels and not args.lbl_list_file:
         try:
-            with open(os.path.join(os.path.dirname(args.img_list_csv), "labels.txt"), 'r') as f:
+            with open(os.path.join(os.path.dirname(args.img_list_file), "labels.txt"), 'r') as f:
                 test_labels = f.read().splitlines()
         except:
             raise ValueError("Must provide a path to labels.txt file or a csv listing filepaths of labels")
@@ -115,7 +115,8 @@ def run_batch_inference(args):
     plots_folder = os.path.join(run_path, "overlays") if args.plot else None
     if plots_folder:
         os.makedirs(plots_folder, exist_ok=True)
-    Utils.initialize_logging(run_path, output_name, args.supress_log)
+    supress_log = args.suppress_log if args.supress_log else False
+    Utils.initialize_logging(run_path, output_name, supress_log)
 
     # Load test images and labels
     image_list = return_img_list(args)

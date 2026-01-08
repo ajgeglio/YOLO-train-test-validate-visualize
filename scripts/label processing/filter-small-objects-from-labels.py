@@ -3,8 +3,9 @@ import shutil  # Added for the backup feature
 import pandas as pd
 import sys
 import numpy as np
-# --- Use Actual Classes ---
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+import pathlib
+SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
+sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 from utils import Utils
 from reportFunctions import Reports
 # -----------------------------------------------

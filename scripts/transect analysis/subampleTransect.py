@@ -20,7 +20,7 @@ A plot is generated to compare the biomass densities of the full transect and th
 SCRIPT_DIR = pathlib.Path(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.append(str(PROJECT_ROOT / "src"))
-from transects import Transects
+from transectUtils import Transects
 # -----------------------------------------------------
 
 def parse_args():

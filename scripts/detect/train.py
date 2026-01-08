@@ -5,7 +5,7 @@ import time
 from timeit import default_timer as stopwatch
 from ultralytics import YOLO, checks
 import torch
-from pathlib import Path # <-- 1. ADD THIS IMPORT
+from pathlib import Path
 
 """
 YOLOv8 Training Module for Goby Detection
@@ -59,7 +59,7 @@ def parse_arguments():
     parser.add_argument('--warmup_momentum', default=0.8, type=float, help="Initial momentum during the warmup phase.")
     parser.add_argument('--optimizer', default='auto', help="Automatically selects the optimizer (often defaults to SGD for detection/segmentation).")
     parser.add_argument('--note', default="training run", help='Additional notes to append on the training run')
-    parser.add_argument('--single_cls', action='store_true', help='Treats all classes as a single class (only use for binary classification).') 
+    parser.add_argument('--single_cls', action='store_true', help='Treats all classes as a single class (only use for binary object/background detection).') 
     parser.set_defaults(resume=False)
     return parser.parse_args()
 

@@ -1,12 +1,9 @@
 import sys
-import pathlib
 import glob
-
+import pathlib
 SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
 sys.path.append(str(SCRIPT_DIR.parent / "src"))
-
 from utils import Utils
-
 import pandas as pd
 import os
 

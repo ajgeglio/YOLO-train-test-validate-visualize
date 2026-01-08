@@ -7,10 +7,10 @@ import pandas as pd
 from typing import Dict, Any
 import numbers
 SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
-sys.path.append(str(SCRIPT_DIR.parent / "src"))
+sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 try:
     from reportFunctions import Reports
-    from transects import Transects
+    from transectUtils import Transects
 except ImportError as e:
     print(f"Error importing modules: {e}. Check your PYTHONPATH and 'src' directory.")
     sys.exit(1)
@@ -21,8 +21,8 @@ except ImportError as e:
 def arg_parser():
     """Main function to parse arguments and run the report generation pipeline."""
     parser = argparse.ArgumentParser(description="Generate a summary report for a specific transect inference run.")
-    parser.add_argument("--run_directory", type=str, required=True, default="D:\\ageglio-1\\gobyfinder_yolov8\\output\\test_runs",
-                        help="The name of the test run folder where results are stored.")
+    parser.add_argument("--run_directory", type=str, default="D:\\ageglio-1\\gobyfinder_yolov8\\output\\test_runs",
+                        help="The name of the test run directory where results are stored.")
     parser.add_argument("--test_run", type=str, required=False, default="default_test_run",
                         help="The name of the test run folder where results are stored.")
     parser.add_argument("--collect_id", type=str, required=False, default='20200806_001_Iver3069_ABS1',

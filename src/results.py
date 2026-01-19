@@ -3,6 +3,19 @@ import pandas as pd
 import numpy as np
 from utils import *
 
+@staticmethod
+def choose_best_column(df, candidates):
+    existing = [c for c in candidates if c in df.columns]
+    if not existing:
+        return None  # no column found
+
+    # If only one exists, return it
+    if len(existing) == 1:
+        return existing[0]
+
+    # If both exist, prefer the one with fewer missing values
+    return min(existing, key=lambda c: df[c].isna().sum())
+
 class YOLOResults:
     def __init__(self, meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh=0.1):
         self.meta_path = meta_path
@@ -32,10 +45,11 @@ class YOLOResults:
             infer = infer.rename(columns={"imw": "imw_p", "imh": "imh_p"})
             infer["conf"] = infer["conf"].astype(float)
             infer = infer[infer["conf"] >= 0.099] # Self-imposed threshold for confidence to shorten results output
-            print("Total objects in inference", infer.shape)
+            print()
+            print("Total objects in inference after automatic confidence filter of 0.099", infer.shape)
             n_im_inferred = infer["Filename"].nunique()
             im_inferred = infer["Filename"].unique()
-            print("Number of images inferred", n_im_inferred)
+            print("Number of images in inference output after 0.099 filter", n_im_inferred)
         except Exception as e:
             print("Error loading YOLO inference results:", e)
             return None
@@ -72,8 +86,33 @@ class YOLOResults:
                 metadata = pd.read_csv(meta_path, low_memory=False)
                 filename_col = metadata.columns[metadata.columns.str.lower() == "filename"]
                 if not filename_col.empty:
-                    # clean Filename column
+                    # clean Filename column to basename
                     metadata["Filename"] = metadata[filename_col[0]].apply(lambda x: x.split(".")[0])
+                
+                # --- Normalize image width/height columns ---
+                width_candidates = ["imw", "ImageWidth"]
+                height_candidates = ["imh", "ImageLength"]
+
+                # Pick best width column
+                best_w = choose_best_column(metadata, width_candidates)
+                best_h = choose_best_column(metadata, height_candidates)
+
+                # Create unified columns
+                if best_w is not None:
+                    metadata["imw"] = metadata[best_w]
+                else:
+                    metadata["imw"] = None  # or raise an error
+
+                if best_h is not None:
+                    metadata["imh"] = metadata[best_h]
+                else:
+                    metadata["imh"] = None  # or raise an error
+
+                # Optionally drop the originals to avoid confusion
+                for col in width_candidates + height_candidates:
+                    if col in metadata.columns and col not in ["imw", "imh"]:
+                        metadata.drop(columns=[col], inplace=True)
+
                 im_in_meta = metadata["Filename"].unique()
             except Exception:
                 print("No metadata csv provided, returning inference results without metadata")
@@ -85,7 +124,7 @@ class YOLOResults:
             # Merge metadata and inference results
             if not find_closest:
                 # Direct merge on Filename
-                df_combined = pd.merge(metadata, infer, how="left", on="Filename").sort_values(by="Filename").reset_index(drop=True)
+                df_combined = pd.merge(metadata, infer, how="inner", on="Filename").sort_values(by="Filename").reset_index(drop=True)
             else:
                 # Find closest metadata match for each inference result
                 df_combined = pd.merge_asof(metadata.sort_values("Filename"), infer.sort_values("Filename"), on="Filename", direction="nearest")
@@ -213,22 +252,6 @@ class YOLOResults:
             yolores = self.filter_based_on_weight(yolores, self.yolo_infer_path)
         return yolores
 
-# if __name__ == "__main__":
-#     # Example usage:
-#     meta_path = "path/to/metadata.csv"
-#     yolo_infer_path = "path/to/yolo_inference.csv"
-#     substrate_path = "path/to/substrate_predictions.csv"
-#     op_path = "path/to/OP_table.xlsx" # operations table at collect level with Suvey123 information
-#     conf_thresh = 0.001
-
-#     # Initialize the output class
-#     output = YOLOResults(meta_path, yolo_infer_path, substrate_path, op_path, conf_thresh)
-
-#     yolores = output.yolo_results()
-
-#     # Save or further process yolores as needed
-#     print(yolores.head())
-
 class LBLResults:
     def __init__(self, meta_path, yolo_lbl_path, substrate_path, op_path):
         self.meta_path = meta_path
@@ -255,6 +278,7 @@ class LBLResults:
         try:
             lbls = pd.read_csv(yolo_lbl_path, index_col=0)
             lbls['conf'] = 1
+            print()
             print("Total objects in labels", lbls.shape)
             n_im_lbld = lbls["Filename"].nunique()
             im_lbld = lbls["Filename"].unique()
@@ -297,6 +321,30 @@ class LBLResults:
                 if not filename_col.empty:
                     # clean Filename column
                     metadata["Filename"] = metadata[filename_col[0]].apply(lambda x: x.split(".")[0])
+                # --- Normalize image width/height columns ---
+                width_candidates = ["imw", "ImageWidth"]
+                height_candidates = ["imh", "ImageLength"]
+
+                # Pick best width column
+                best_w = choose_best_column(metadata, width_candidates)
+                best_h = choose_best_column(metadata, height_candidates)
+
+                # Create unified columns
+                if best_w is not None:
+                    metadata["imw"] = metadata[best_w]
+                else:
+                    metadata["imw"] = None  # or raise an error
+
+                if best_h is not None:
+                    metadata["imh"] = metadata[best_h]
+                else:
+                    metadata["imh"] = None  # or raise an error
+
+                # Optionally drop the originals to avoid confusion
+                for col in width_candidates + height_candidates:
+                    if col in metadata.columns and col not in ["imw", "imh"]:
+                        metadata.drop(columns=[col], inplace=True)
+
                 im_in_meta = metadata["Filename"].unique()
             except Exception:
                 print("No metadata csv provided, returning inference results without metadata")

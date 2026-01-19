@@ -40,8 +40,9 @@ def parse_args():
     parser.add_argument("--img_list_file", type=pathlib.Path, required=False,
         help="Path to the image list file. Used to generate a list of image filenames for filtering."
     )
-    parser.add_argument("--tiled", action="store_true",
-        help="Metadata must be formatted for a tiled images"
+    parser.add_argument("--tiled", action="store_true", help="Metadata must be formatted for a tiled images"
+    )
+    parser.add_argument("--annotated", action="store_true", help="Metadata from annotated database"
     )
     # Mutually Exclusive Filtering Options
     group = parser.add_mutually_exclusive_group(required=True) # Made group required
@@ -51,11 +52,22 @@ def parse_args():
     group.add_argument("--goby_collects_filter", action="store_true",
         help="Filter metadata to include only 'GOBY == 1' assessed collects from the OP table."
     )
-    group.add_argument("--collect_id", type=str,
-        help="Specific COLLECT_ID to filter the metadata."
+    group.add_argument("--CollectID", type=str, help="Specific COLLECT ID to filter the metadata."
     )
     
     return parser.parse_args()
+
+def choose_best_column(df, candidates):
+    existing = [c for c in candidates if c in df.columns]
+    if not existing:
+        return None
+
+    if len(existing) == 1:
+        return existing[0]
+
+    # Pick the one with fewer missing values
+    return min(existing, key=lambda c: df[c].isna().sum())
+
 
 # --- Data Loading and Filtering ---
 def load_metadata(args: argparse.Namespace) -> pd.DataFrame:
@@ -66,29 +78,64 @@ def load_metadata(args: argparse.Namespace) -> pd.DataFrame:
 
     print(f"Loading metadata from: {args.metadata_folder}")
     
-    # Glob for both .pkl and .pickle files, and sort to find the latest one
-    metadata_files = list(args.metadata_folder.glob("all_unpacked_images_metadata*.pkl"))
-    metadata_files.extend(list(args.metadata_folder.glob("all_unpacked_images_metadata*.pickle")))
+    if not args.annotated:
+        # Glob for both .pkl and .pickle files, and sort to find the latest one
+        metadata_files = list(args.metadata_folder.glob("all_unpacked_images_metadata*.pkl"))
+        metadata_files.extend(list(args.metadata_folder.glob("all_unpacked_images_metadata*.pickle")))
 
-    if not metadata_files:
-        print(f"No metadata files found in {args.metadata_folder}, exiting.")
-        sys.exit(1)
+        if not metadata_files:
+            print(f"No metadata files found in {args.metadata_folder}, exiting.")
+            sys.exit(1)
 
-    # Sort files lexicographically (assuming YYYYmmdd dates in filename)
-    metadata_files.sort(reverse=True)
-    latest_metadata_file = metadata_files[0]
+        # Sort files lexicographically (assuming YYYYmmdd dates in filename)
+        metadata_files.sort(reverse=True)
+        latest_metadata_file = metadata_files[0]
+        try:
+            metadata = pd.read_pickle(latest_metadata_file)
+
+        except Exception as e:
+            print(f"Error loading metadata pickle file: {e}")
+            sys.exit(1)
+
+    elif args.annotated:
+        # Glob for both .pkl and .pickle files, and sort to find the latest one
+        metadata_files = list(args.metadata_folder.glob("all_annotated_images_metadata*.csv"))
+
+        if not metadata_files:
+            print(f"No metadata files found in {args.metadata_folder}, exiting.")
+            sys.exit(1)
+
+        # Sort files lexicographically (assuming YYYYmmdd dates in filename)
+        metadata_files.sort(reverse=True)
+        latest_metadata_file = metadata_files[0]
+        try:
+            metadata = pd.read_csv(latest_metadata_file, index_col=0, low_memory=False)
+        except Exception as e:
+            print(f"Error loading metadata pickle file: {e}")
+            sys.exit(1)
+
+    # --- Normalize CollectID column ---
+    collect_candidates = ["CollectID", "collect_id"]
+
+    best_collect = choose_best_column(metadata, collect_candidates)
+
+    if best_collect is None:
+        raise ValueError("No CollectID-like column found in metadata")
+
+    # Create unified CollectID column
+    metadata["CollectID"] = metadata[best_collect]
+
+    # Optionally drop the originals
+    for col in collect_candidates:
+        if col in metadata.columns and col != "CollectID":
+            metadata.drop(columns=[col], inplace=True)
+
+    # Convert CollectID to string for consistent filtering
+    metadata['CollectID'] = metadata['CollectID'].astype(str)
     
     print(f"Loading latest metadata file: {latest_metadata_file}")
+    return metadata
 
-    try:
-        metadata = pd.read_pickle(latest_metadata_file)
-        # Convert collect_id to string for consistent filtering
-        if 'collect_id' in metadata.columns:
-             metadata['collect_id'] = metadata['collect_id'].astype(str)
-        return metadata
-    except Exception as e:
-        print(f"Error loading metadata pickle file: {e}")
-        sys.exit(1)
 
 def filter_goby_collects(op_table_pth: pathlib.Path) -> pd.Series:
     """
@@ -166,13 +213,13 @@ def usable_processed_metadata(args: argparse.Namespace) -> pd.DataFrame:
     # 2. Apply User Filter
     if args.goby_collects_filter:
         collect_list = filter_goby_collects(args.op_table_pth)
-        meta_usable_filtered = meta_usable[meta_usable.collect_id.isin(collect_list)].copy()
+        meta_usable_filtered = meta_usable[meta_usable.CollectID.isin(collect_list)].copy()
         filter_type = "GOBY Collects"
     
-    elif args.collect_id:
-        collect_list = [args.collect_id]
-        meta_usable_filtered = meta_usable[meta_usable.collect_id.isin(collect_list)].copy()
-        filter_type = f"Collect ID: {args.collect_id}"
+    elif args.CollectID:
+        collect_list = [args.CollectID]
+        meta_usable_filtered = meta_usable[meta_usable.CollectID.isin(collect_list)].copy()
+        filter_type = f"Collect ID: {args.CollectID}"
 
     elif args.image_list_filter:
         image_list, tile_list = return_img_list(args)
@@ -229,15 +276,15 @@ def usable_processed_metadata(args: argparse.Namespace) -> pd.DataFrame:
         # Dropping nan in DistanceToBottom_m to get final table
         meta_usable_filtered = meta_usable_filtered.dropna(subset=["DistanceToBottom_m"])
 
-    # Final check for collect_id existence
-    if 'collect_id' not in meta_usable_filtered.columns:
-        print("Error: 'collect_id' column not found in metadata DataFrame after filtering. Exiting.")
+    # Final check for CollectID existence
+    if 'CollectID' not in meta_usable_filtered.columns:
+        print("Error: 'CollectID' column not found in metadata DataFrame after filtering. Exiting.")
         sys.exit(1)
         
     print(f"Final processed table shape: {meta_usable_filtered.shape}")
     
     # Calculate median time interval for QA
-    medians = meta_usable_filtered.groupby('collect_id')['Time_s'].apply(lambda x: x.diff()).values
+    medians = meta_usable_filtered.groupby('CollectID')['Time_s'].apply(lambda x: x.diff()).values
     print(f"Average median time interval (for QA): {np.nanmedian(medians):.4f} seconds.")
     
     return meta_usable_filtered
@@ -255,8 +302,8 @@ def main():
     processed_metadata = usable_processed_metadata(args)
     
     # 3. Determine output path and save
-    if args.collect_id:
-        filename = f"processed_metadata_{args.collect_id}_{Ymmdd}.csv"
+    if args.CollectID:
+        filename = f"processed_metadata_{args.CollectID}_{Ymmdd}.csv"
     elif args.image_list_filter:
         # Use image_list_filter in filename for clarity
         filename = f"processed_metadata_image_list_filter_{Ymmdd}.csv" 

@@ -39,7 +39,7 @@ def lbl_report_filt_g(df):
 
 def filter_yolo_lbl_report_and_remove_labels(
     run_directory, 
-    tiles_directory, 
+    labels_directory, 
     save_new_labels_csv=True, 
     save_new_labels=True,
     backup_originals=True  # <-- SAFETY: Added backup flag
@@ -126,7 +126,7 @@ def filter_yolo_lbl_report_and_remove_labels(
         
         # the unique cls,x,y,w,h to remove
         drop_df = group_df[["cls","x","y","w","h"]]
-        lbl_file_path = os.path.join(tiles_directory, basename + ".txt")
+        lbl_file_path = os.path.join(labels_directory, basename + ".txt")
         
         print(f"Processing: {basename}.txt", end=' \r')
 
@@ -199,7 +199,7 @@ def filter_yolo_lbl_report_and_remove_labels(
 if __name__ == "__main__":
     # --- (User's real directories) ---
     run_dir = r"D:\ageglio-1\gobyfinder_yolov8\output\test_runs\Labeled data tiled 2048 HNM"
-    tiles_dir = r"D:\datasets\tiled\train\labels"
+    tiles_dir = r"D:\datasets\Extra\full\labels"
     
     print("--- Running Cleaner ---")
     filter_yolo_lbl_report_and_remove_labels(run_dir, tiles_dir, save_new_labels_csv=False, save_new_labels=False)

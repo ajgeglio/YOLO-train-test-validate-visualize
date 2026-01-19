@@ -7,7 +7,7 @@ import tqdm
 def parse_arguments():
     """Parses command-line arguments for the tiling script."""
     parser = argparse.ArgumentParser(description="Tiling datasets for training")
-    parser.add_argument('--source_dir', required=True, help="Directory containing images and/or labels folders.")
+    parser.add_argument('--directory', required=True, help="Directory containing images and/or labels folders.")
     parser.add_argument('--list_file', action="store_true", help='Use images.txt and labels.txt for file paths.')
     parser.add_argument('--image_width', type=int, default=None, help="Image width (required in labels_only mode).")
     parser.add_argument('--image_height', type=int, default=None, help="Image height (required in labels_only mode).")
@@ -71,6 +71,8 @@ def get_tile_params(img_h, args):
         return 1672, 1307, 460, 460
     elif img_h == 2176:
         return 1672, 1307, 460, 438
+    elif img_h == 3008:
+        return 1672, 1307, 460, 456
     else:
         return args.tile_size_x, args.tile_size_y, args.overlap_x, args.overlap_y
 

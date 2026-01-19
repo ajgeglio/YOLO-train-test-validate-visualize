@@ -50,7 +50,7 @@ def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Yolov8 validation statistics for goby detection, existing labels needed")
     parser.add_argument('--data_yaml', dest='data_yaml', default=None, help="yml file pointing to directory of images to perform inference on (must have labels)")
-    parser.add_argument('--weights', dest="weights", default=r'path\to\weights.pt', help='Trained weights path')
+    parser.add_argument('--weights', dest="weights", required=True, help='Trained weights path')
     parser.add_argument('--split', dest="split", default='test', help='split to do val on yaml file: train, test, val')
     parser.add_argument('--output_name', dest='output_name', default="validation_output", type=str, help='name of the ouput csv, also the folder created in the validation folder')
     parser.add_argument('--batch_size', dest='batch_size', default=4, type=int, help='Sets the number of images per batch. Use -1 for AutoBatch, which automatically adjusts based on GPU memory availability')

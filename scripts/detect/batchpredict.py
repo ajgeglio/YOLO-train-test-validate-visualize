@@ -21,25 +21,27 @@ from sahi.utils.cv import read_image_as_pil
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Yolov8 inference, prediction and scoring for goby detection")
+    parser.add_argument('--directory', help='Output directory for results and inference. If not specified, will go to default location in repo output folder')
     parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
     parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
     parser.add_argument('--img_directory', default=None, help='Directory of Images')
     parser.add_argument('--img_list_file', default=None, help='Path to .txt or .csv list of image paths')
     parser.add_argument('--lbl_list_file', default=None, help='Path to .txt or .csv list of label paths')
-    parser.add_argument('--weights', default=r"path\to\weights.pt", help='any yolov8/yolov9/yolo11/yolo12/rt-detr det model is supported')
+    parser.add_argument('--weights', required=True, help='any yolov8/yolov9/yolo11/yolo12/rt-detr trained detect model is supported')
     parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
     parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
-    parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
+    parser.add_argument('--suppress_log', action="store_true", help='Suppress local terminal log')
     parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
     parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
     parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
     parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
-    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
+    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to what the weights were trained as. This can be useful on tiled images")
     parser.add_argument('--resume', action='store_true', help='use predictions.py file to continue')
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     parser.add_argument('--sahi_tiled', action="store_true", help='Enable SAHI tiled inference')
     parser.add_argument('--tile_size', default=[1307, 1672], type=int, help='Tile size [slice_height, slice_widh] for SAHI tiled inference')
     parser.add_argument('--tile_overlap', default=[0.35, 0.275], type=float, help='Tile overlap ratio [overlap_height_ratio, overlap_width_ratio] for SAHI tiled inference ABISS1 default = [0.335, 0.275]')
+    parser.add_argument('--classes', nargs='+', default=[0], type=int, help='Filter by class: --classes 0  or --classes 0 2 3')
     return parser.parse_args()
 
 def setup_environment():
@@ -58,6 +60,7 @@ def return_img_list(args):
         assert len(test_images) > 0, "No images found in directory"
     elif args.img_list_file:
         print("Using img_list_file argument")
+        print(args.img_list_file)
         with open(args.img_list_file, 'r', encoding='utf-8-sig') as f:
             test_images = f.read().splitlines()
         # ------------------------
@@ -98,6 +101,14 @@ def save_labels_to_csv(df, csv_path):
     df['ground_truth_id'] = df['Filename'] + "_" + df.index.astype('str')
     df.to_csv(csv_path, header=True)
 
+def output_score_reports(pred_csv_path, lbl_csv_path, run_path, confidence_thresh):
+    df_pred, df_lbls = Reports.generate_summary(pred_csv_path, lbl_csv_path)
+    df_scores = Reports.scores_df(df_lbls, df_pred, iou_tp=0.5)
+    df_scores.to_csv(os.path.join(run_path, "scores.csv"))
+    fndf = Reports.return_fn_df(df_lbls, df_pred, conf_thresh=confidence_thresh)
+    fndf = fndf[fndf.fn==1]
+    fndf.to_csv(os.path.join(run_path, f"false_negatives_conf_thresh_{confidence_thresh}.csv"), index=False)
+
 def run_batch_inference(args):
     setup_environment()
     start_time = stopwatch()
@@ -110,13 +121,17 @@ def run_batch_inference(args):
     # output_name = os.path.join(args.output_name + "_" + name_time)
     output_name = args.output_name
     # Setup paths and logging
-    run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", output_name)
+    # 1. Setup Paths
+    if args.directory:
+         run_path = args.directory
+    else:
+        run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", args.output_name)
     os.makedirs(run_path, exist_ok=True)
     plots_folder = os.path.join(run_path, "overlays") if args.plot else None
     if plots_folder:
         os.makedirs(plots_folder, exist_ok=True)
-    supress_log = args.suppress_log if args.supress_log else False
-    Utils.initialize_logging(run_path, output_name, supress_log)
+    suppress_log = args.suppress_log if args.suppress_log else False
+    Utils.initialize_logging(run_path, output_name, suppress_log)
 
     # Load test images and labels
     image_list = return_img_list(args)
@@ -153,7 +168,9 @@ def run_batch_inference(args):
             print("Label CSV already exists, appending results.")
 
     # Prediction loop
+    print("Starting Inference using weights at", args.weights)
     n_batches = (len(image_list) - 1) // batch_size + 1
+    print("Total inference run contains", n_batches, "batches at batch_size=", batch_size)
     for k in range(start_batch, n_batches):
         print('Batch =', k)
         s, e = k * batch_size, (k + 1) * batch_size
@@ -172,10 +189,16 @@ def run_batch_inference(args):
                 imw, imh = image.size
                 if (imh, imw) == (3000, 4096):
                     tile_size=[1307, 1672]
+                    # Height: 0.35 * 1307 = 457.5px overlap -> Covers ~3006px (Safe)
                     tile_overlap=[0.35, 0.275]
                 elif (imh, imw) == (2176, 4096):
                     tile_size=[1307, 1672]
+                    # Height: 0.335 * 1307 = 437.8px overlap -> Covers ~2177px (Safe)
                     tile_overlap=[0.335, 0.275]
+                elif (imh, imw) == (3008, 4096):
+                    tile_size = [1307, 1672]
+                    # Height: 0.349 * 1307 = 456.1px overlap -> Covers ~3009px (Safe)
+                    tile_overlap = [0.349, 0.275]
                 else:
                     tile_size=args.tile_size
                     tile_overlap=args.tile_overlap
@@ -211,7 +234,7 @@ def run_batch_inference(args):
                 iou=args.iou,
                 conf=args.confidence,
                 imgsz=image_size,
-                classes=[0]
+                classes=args.classes if 'classes' in args else [0]
             )
             for r, img_path in zip(results, imgs):
                 lbl = lbls.pop(0) if lbls else None
@@ -227,12 +250,9 @@ def run_batch_inference(args):
     
     if args.has_labels:
         save_labels_to_csv(lbl, lbl_csv_path)
-        df_pred, df_lbls = Reports.generate_summary(pred_csv_path, lbl_csv_path)
-        df_scores = Reports.scores_df(df_lbls, df_pred, iou_tp=0.5)
-        df_scores.to_csv(os.path.join(run_path, "scores.csv"))
-        fndf = Reports.return_fn_df(df_lbls, df_pred, conf_thresh=args.confidence)
-        fndf = fndf[fndf.fn==1]
-        fndf.to_csv(os.path.join(run_path, f"false_negatives_conf_thresh_{args.confidence}.csv"), index=False)
+        confidence_thresh = args.confidence
+        # Output scoring report comparing predictions and labels
+        output_score_reports(pred_csv_path, lbl_csv_path, run_path, confidence_thresh)
 
     # Handle cages if required
     if args.has_cages:

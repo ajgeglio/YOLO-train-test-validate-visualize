@@ -255,7 +255,7 @@ class Overlays:
         return msk_img
     
     @staticmethod
-    def disp_lbl_bbox(img_path, lbl_path, label_only=False, imw=None, imh=None):
+    def disp_lbl_bbox(img_path, lbl_path, label_only=False, imw=None, imh=None, save_path=None):
         assert os.path.basename(img_path).split(".")[0] == os.path.basename(lbl_path).split(".")[0]
         if label_only:
             img = PIL.Image.new("RGB", (imw, imh), color="white")
@@ -275,14 +275,18 @@ class Overlays:
                 x2 = x + w/2
                 y2 = y + h/2
                 if int(cls) == 0:
-                    draw.rectangle((x1,y1,x2,y2), outline="#FF5F1F", width=1)
-                elif int(cls) == 1:
                     draw.rectangle((x1,y1,x2,y2), outline="#FF1493", width=1)
+                elif int(cls) == 1:
+                    draw.rectangle((x1,y1,x2,y2), outline="#FF5F1F", width=1)
                 else:
                     draw.rectangle((x1,y1,x2,y2), outline="#FFFF00", width=1)
                 # draw.ellipse((x-s,y-s,x+s,y+s), fill=(200))
         except: print("label not processed")
-        return img
+        if save_path:
+            os.makedirs(save_path, exist_ok=True)
+            img.save(os.path.join(save_path, os.path.basename(img_path)))
+        else:
+            return img
     
     @staticmethod
     def disp_merr_bbox(img_path, mlbl_path):

@@ -24,7 +24,7 @@ class YOLODataFormatter:
         img_name = os.path.basename(img_path).split(".")[0]
         
         # Extract required data
-        class_dict = r.names
+        class_dict = r.names  # Assuming r.names is a dict mapping class indices to names
         cls = r.boxes.cls.data.cpu().numpy().astype(int)
         xywh = r.boxes.xywhn.data.cpu().numpy()
         conf = r.boxes.conf.data.cpu().numpy()

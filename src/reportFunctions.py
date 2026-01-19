@@ -315,3 +315,12 @@ class Reports:
         print(f'The confidence threshold where "precision" and "recall" are the closest is: {c_eq} @ {pr_eq}')
         print(f'The confidence threshold where "F1" is at its maximum is: {cmax} @ {fmax}')
         return df, fmax, cmax, c_eq, pr_eq
+    
+    @staticmethod
+    def output_score_reports(pred_csv_path, lbl_csv_path, run_path, confidence_thresh):
+        df_pred, df_lbls = Reports.generate_summary(pred_csv_path, lbl_csv_path)
+        df_scores = Reports.scores_df(df_lbls, df_pred, iou_tp=0.5)
+        df_scores.to_csv(os.path.join(run_path, "scores.csv"))
+        fndf = Reports.return_fn_df(df_lbls, df_pred, conf_thresh=confidence_thresh)
+        fndf = fndf[fndf.fn==1]
+        fndf.to_csv(os.path.join(run_path, f"false_negatives_conf_thresh_{confidence_thresh}.csv"), index=False)

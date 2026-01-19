@@ -8,6 +8,7 @@ sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 from dataFormatter import YOLODataFormatter
 from overlayFunctions import Overlays
 from reportFunctions import Reports
+from utils import Utils
 import pandas as pd
 from datetime import datetime
 import argparse
@@ -28,10 +29,10 @@ def parse_arguments():
     parser.add_argument('--weights', dest="weights", default=r"path\to\model_weights.pt", help='Weights path')
     parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
     parser.add_argument('--output_name', dest='output_name', default="overlay_output", type=str, help='Name of the output csv')
-    parser.add_argument('--img_size', dest='img_size', default=4096, type=int, help='Max image dimension')
     parser.add_argument('--iou', dest='iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
     parser.add_argument('--sample', default=None, type=int, help='Number of images to randomly sample if doing a subset')
     parser.add_argument('--confidence', dest='confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
+    parser.add_argument('--use_img_size', action='store_true', help="perform inference on images without defaulting to the weights default")
     parser.add_argument('--verify', action="store_true", help='Verify image before processing')
     return parser.parse_args()
 
@@ -112,7 +113,17 @@ def main():
 
     conf_thresh = args.confidence
     model = YOLO(args.weights)
-    results = model(imgs, stream=True, half=True, iou=args.iou, conf=conf_thresh, imgsz=args.img_size)
+    image_size = model.ckpt["train_args"]["imgsz"]
+    if args.use_img_size:
+        imh, imw = Utils.get_shape_pil(image_list[0])
+        image_size = imh, imw
+    results = model(
+        imgs, 
+        stream=True, 
+        half=True, 
+        iou=args.iou, 
+        conf=conf_thresh, 
+        imgsz=image_size)
     plot = args.plot
     labels = args.has_labels
 

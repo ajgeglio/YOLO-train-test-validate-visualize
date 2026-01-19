@@ -66,6 +66,22 @@ class Utils:
         return f"{hours} hours, {minutes} minutes"
     
     @staticmethod
+    def print_progress(message, previous_length=0):
+        """
+        Print a progress message in the terminal, overwriting the previous line.
+
+        Parameters:
+        - message (str): The message to display.
+        - previous_length (int): The length of the previous message (optional).
+        """
+        # Get terminal width
+        terminal_width = shutil.get_terminal_size((80, 20)).columns
+        # Pad the message to overwrite the previous one
+        padded_message = message.ljust(max(previous_length, terminal_width))
+        print(padded_message, end="\r")
+        return len(message)
+    
+    @staticmethod
     def list_files_in_zip(zip_path, pattern):
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             file_list = zip_ref.namelist()
@@ -338,6 +354,12 @@ class Utils:
         except: n_objects = 0
         return n_objects
     
+    def return_Ymmdd():
+        t = datetime.datetime.now()
+        timestring = f"{t.year:02d}{t.month:02d}{t.day:02d}-{t.hour:02d}{t.minute:02d}{t.second:02d}"
+        Ymmdd = timestring.split("-")[0]
+        return Ymmdd
+    
     @staticmethod
     def count_n_objects_in_split(directory, split):
         lbl_lst_pths = glob.glob(os.path.join(directory,split,"labels","*.txt"))
@@ -502,6 +524,66 @@ class Utils:
             # yields 'PI_1718720450_372_Iver3069'
             tiled_basename = tiled_filename.rsplit('_', 2)[0]
             return tiled_basename
+    
+    @staticmethod
+    def split_checker(train_imgs, test_imgs, valid_imgs):
+        '''The inner check_split function is exactly what .apply expects: 
+        a single argument function returning a value. 
+            checker = split_checker(train_imgs, test_imgs, valid_imgs)
+            df["Split"] = df["Filename"].apply(checker)
+        '''
+        train_set = set(train_imgs)
+        test_set = set(test_imgs)
+        valid_set = set(valid_imgs)
+
+        def check_split(filename):
+            if filename in train_set:
+                return "train"
+            if filename in test_set:
+                return "test"
+            if filename in valid_set:
+                return "validation"
+            return "none"
+
+        return check_split
+    
+    def safe_copy_pairs(img_paths, lbl_paths, img_dst, lbl_dst, dry_run=False):
+        """
+        Copy image/label pairs to destination folders with safety checks.
+        """
+        img_dst = Path(img_dst)
+        lbl_dst = Path(lbl_dst)
+
+        img_dst.mkdir(parents=True, exist_ok=True)
+        lbl_dst.mkdir(parents=True, exist_ok=True)
+
+        for img, lbl in zip(img_paths, lbl_paths):
+            img = Path(img)
+            lbl = Path(lbl)
+
+            # Basic integrity checks
+            if not img.exists():
+                print(f"[SKIP] Missing image: {img}")
+                continue
+            if not lbl.exists():
+                print(f"[SKIP] Missing label: {lbl}")
+                continue
+
+            img_out = img_dst / img.name
+            lbl_out = lbl_dst / lbl.name
+
+            # Avoid accidental overwrite
+            if img_out.exists() or lbl_out.exists():
+                print(f"[SKIP] Already exists → {img_out.name}")
+                continue
+
+            if dry_run:
+                print(f"[DRY] Would copy: {img} → {img_out}")
+                print(f"[DRY] Would copy: {lbl} → {lbl_out}")
+            else:
+                shutil.copy2(img, img_out)
+                shutil.copy2(lbl, lbl_out)
+                print(f"[OK] Copied {img.name} + {lbl.name}")
     
     @staticmethod
     def get_all_img_lbl_pths(BASE_DIR="D:\\datasets\\tiled", SPLITS=["train", "test", "validation"]):

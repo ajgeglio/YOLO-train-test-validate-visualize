@@ -30,7 +30,7 @@ class BatchOutputProcessor:
             
             # Map class IDs to names
             cls_l, x_l, y_l, w_l, h_l = df_l[0], df_l[1], df_l[2], df_l[3], df_l[4]
-            names_l = list(map(lambda x: class_dict.get(x, str(x)), cls_l))
+            names_l = list(map(lambda x: class_dict[x], cls_l))
             
             # Prepare arrays for writing
             n_bxs = len(cls_l)
@@ -40,9 +40,9 @@ class BatchOutputProcessor:
             # Combine all label data
             ar_l = np.c_[img_nm_l, names_l, cls_l, x_l, y_l, w_l, h_l, im_h_l, im_w_l]
             df_write = pd.DataFrame(ar_l)
-            
+            df_write = df_write.sort_index(axis=0) # Sort by index for consistency
             # Append data to the CSV file without header
-            df_write.to_csv(lbls_csv_pth, mode='a', header=False, index=False)
+            df_write.to_csv(lbls_csv_pth, mode='a', header=False)
             
             # Return original structure (used for plotting)
             return df_l 
@@ -108,7 +108,7 @@ class BatchOutputProcessor:
         if not df_pred_single.empty:
             # Write prediction data to CSV
             # Data types were already set correctly in _extract_yolo_data
-            df_pred_single.to_csv(pred_csv_pth, mode='a', header=False, index=False)
+            df_pred_single.to_csv(pred_csv_pth, mode='a', header=False)
             
         # 2. Process and Write Labels
         if has_labels:

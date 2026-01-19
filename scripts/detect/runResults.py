@@ -2,7 +2,7 @@ import pathlib
 import sys
 import os
 import argparse
-from batchpredict import run_batch_inference
+from batchpredict import run_batch_inference, output_score_reports
 SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
 sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
 from results import LBLResults, YOLOResults 
@@ -10,16 +10,17 @@ from results import LBLResults, YOLOResults
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run YOLO batch prediction and results script.")
     # Batch Inference arguments
+    parser.add_argument('--directory', help='Output directory for results and inference. If not specified, will go to default location in repo output folder')
+    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv and folder name')
     parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
     parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
     parser.add_argument('--img_directory', default=None, help='Directory of Images')
     parser.add_argument('--img_list_file', default=None, help='Path to .txt or .csv list of image paths')
     parser.add_argument('--lbl_list_file', default=None, help='Path to .txt or .csv list of label paths, only use if it is not in the same directory as the images.txt')
-    parser.add_argument('--weights', default=r"path\to\weights.pt", help='any yolov8/yolov9/yolo11/yolo12/rt-detr det model is supported')
+    parser.add_argument('--weights', help='any yolov8/yolov9/yolo11/yolo12/rt-detr trained detect model is supported')
     parser.add_argument('--start_batch', default=0, type=int, help='Start at batch if interrupted')
     parser.add_argument('--plot', action="store_true", help='Argument to plot label + prediction overlay images')
-    parser.add_argument('--supress_log', action="store_true", help='Suppress local terminal log')
-    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv')
+    parser.add_argument('--suppress_log', action="store_true", help='Suppress local terminal log')
     parser.add_argument('--batch_size', default=4, type=int, help='Batch size of n images in the inference loop')
     parser.add_argument('--iou', default=0.6, type=float, help='IoU threshold for Non-Maximum Suppression')
     parser.add_argument('--confidence', default=0.01, type=float, help='Minimum confidence to call a detection')
@@ -55,12 +56,17 @@ def process_results(args, run_path):
 
 def run_results(args):
     # 1. Setup Paths
-    run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", args.output_name)
+    if args.directory:
+         run_path = args.directory
+    else:
+        run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", args.output_name)
     os.makedirs(run_path, exist_ok=True)
 
     # 2. Run Inference (Modular Call)
     if not args.use_predictions:
         print(f"Starting Inference: {args.output_name}")
+        assert args.weights, "You must provide YOLO weights to run inference"
+        print(f"using weights path", args.weights)
         run_batch_inference(args) # Calls the engine directly
 
     # 3. Process Results (Logic moved from batchpredict+results.py)
@@ -77,6 +83,12 @@ def run_results(args):
         lbl_output = LBLResults(args.metadata, lbl_pth, args.substrate, args.op_table)
         lblres = lbl_output.lbl_results(find_closest=False) #
         lblres.to_csv(os.path.join(run_path, "label_box_results.csv"), index=False)
+
+        ## If we have filtered predicitons, re-run the reports
+        if os.path.exists(os.path.join(run_path, "predictions_filtered.csv")):
+            pred_csv_path = os.path.join(run_path, "predictions_filtered.csv")
+            lbl_csv_path = os.path.join(run_path, "labels.csv")
+            output_score_reports(pred_csv_path, lbl_csv_path, run_path, confidence_thresh=args.confidence)
 
 if __name__ == "__main__":
     args = parse_arguments()

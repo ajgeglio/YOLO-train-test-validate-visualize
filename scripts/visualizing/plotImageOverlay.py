@@ -81,6 +81,8 @@ def get_file_paths(args):
         f"No image or label files found in the specified directory: {dir_path}"
     assert len(image_paths) == len(label_paths) or args.labels_only or args.images_only, \
         "Mismatch between image and label counts. Ensure both directories have matching files or use --images_only or --labels_only."
+    
+    print(f"Found {len(image_paths)} image files and {len(label_paths)} label files.")
         
     return sorted(image_paths), sorted(label_paths)
 
@@ -89,9 +91,10 @@ def main():
     """Main function to parse arguments, get paths, and display overlays."""
     args = parse_arguments()
     image_paths, label_paths = get_file_paths(args)
+    path_length = max(len(image_paths), len(label_paths))
 
     # default to random if no user input
-    plot_index = [random.randint(0, len(image_paths) - 1)]
+    plot_index = [random.randint(0, path_length - 1)]
     
     # 1. Determine the index to plot
     if args.index is not None:

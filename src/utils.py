@@ -448,7 +448,6 @@ class Utils:
         ''' Convert Darwin JSON annotation to YOLO format text file'''
         dirname = os.path.dirname(filepath)
         filename = os.path.basename(filepath).split(".")[0]
-        print(f"Converting {filename} from Darwin to YOLO format", end=" \r")
         # Load the JSON file
         with open(filepath, "r") as f:
             data = json.load(f)
@@ -461,15 +460,21 @@ class Utils:
         # Convert annotations to YOLO format
         yolo_lines = []
         for ann in data["annotations"]:
+            if "bounding_box" not in ann:
+                continue
+
             name = ann["slot_names"][0]
             name = name_dict[name] if name in name_dict else 0
+
             bbox = ann["bounding_box"]
             w = bbox["w"] / img_width
-            h = bbox["h"]/ img_height
-            x_center = bbox["x"] / img_width + w/2 
-            y_center = bbox["y"] / img_height + h/2
-            yolo_lines.append(f"{name} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}")
+            h = bbox["h"] / img_height
+            x_center = (bbox["x"] + bbox["w"] / 2) / img_width
+            y_center = (bbox["y"] + bbox["h"] / 2) / img_height
 
+            yolo_lines.append(
+                f"{name} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}"
+            )
         # Save to YOLO-style text file
         with open(f"{os.path.join(dirname,filename)}.txt", "w") as f:
             f.write("\n".join(yolo_lines))

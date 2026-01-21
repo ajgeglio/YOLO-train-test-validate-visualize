@@ -2,6 +2,7 @@ import pathlib
 import sys
 import os
 import argparse
+from datetime import datetime
 from batchpredict import run_batch_inference, output_score_reports
 SCRIPT_DIR = pathlib.Path(__file__).parent if '__file__' in locals() else pathlib.Path.cwd()
 sys.path.append(str(SCRIPT_DIR.parent.parent / "src"))
@@ -11,7 +12,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Run YOLO batch prediction and results script.")
     # Batch Inference arguments
     parser.add_argument('--directory', help='Output directory for results and inference. If not specified, will go to default location in repo output folder')
-    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv and folder name')
+    parser.add_argument('--output_name', default="inference_output", type=str, help='Name of the output csv and folder name (dont worry about this if you are pointing to a specific directory)')
     parser.add_argument('--has_labels', action="store_true", help='Argument to do inference and compare with labels')
     parser.add_argument('--has_cages', action="store_true", help='Argument to calculate fish intersection with quadrats')
     parser.add_argument('--img_directory', default=None, help='Directory of Images')
@@ -59,9 +60,12 @@ def run_results(args):
     if args.directory:
          run_path = args.directory
     else:
-        run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", args.output_name)
+        now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_name = args.output_name + now
+        run_path = os.path.join("output", "test_runs" if args.has_labels else "inference", output_name)
+    
     os.makedirs(run_path, exist_ok=True)
-
+    print("using the run path directory:", run_path)
     # 2. Run Inference (Modular Call)
     if not args.use_predictions:
         print(f"Starting Inference: {args.output_name}")
@@ -77,15 +81,23 @@ def run_results(args):
         
         out_path = os.path.join(run_path, f"inference_results_{args.results_confidence:04.2f}.csv")
         yolores.to_csv(out_path, index=False)
+
+    else:
+        raise ValueError("Unable to use predictions with no predictions.csv in", run_path)
     
     if args.has_labels:
-        lbl_pth = os.path.join(run_path, "labels.csv")
+        try:
+            lbl_pth = os.path.join(run_path, "labels.csv")
+        except:
+            raise ValueError("no labels.csv found in run path", run_path)
         lbl_output = LBLResults(args.metadata, lbl_pth, args.substrate, args.op_table)
         lblres = lbl_output.lbl_results(find_closest=False) #
         lblres.to_csv(os.path.join(run_path, "label_box_results.csv"), index=False)
 
         ## If we have filtered predicitons, re-run the reports
         if os.path.exists(os.path.join(run_path, "predictions_filtered.csv")):
+            print()
+            print("over-writing scores table with filtered predictions")
             pred_csv_path = os.path.join(run_path, "predictions_filtered.csv")
             lbl_csv_path = os.path.join(run_path, "labels.csv")
             output_score_reports(pred_csv_path, lbl_csv_path, run_path, confidence_thresh=args.confidence)

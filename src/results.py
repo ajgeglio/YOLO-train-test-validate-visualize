@@ -124,7 +124,7 @@ class YOLOResults:
             # Merge metadata and inference results
             if not find_closest:
                 # Direct merge on Filename
-                df_combined = pd.merge(metadata, infer, how="inner", on="Filename").sort_values(by="Filename").reset_index(drop=True)
+                df_combined = pd.merge(metadata, infer, how="left", on="Filename").sort_values(by="Filename").reset_index(drop=True)
             else:
                 # Find closest metadata match for each inference result
                 df_combined = pd.merge_asof(metadata.sort_values("Filename"), infer.sort_values("Filename"), on="Filename", direction="nearest")
@@ -132,6 +132,8 @@ class YOLOResults:
                 print("Some rows have missing CollectID after merging metadata and inference results.")  # <-- add this print
                 # Optionally: raise ValueError("Some rows have missing CollectID after merging metadata and inference results.")
             print("Combined infer and metadata", df_combined.shape)
+            print("Combined infer and metadata images", len(df_combined.Filename.unique()))
+            print("This should be the exact length of the image list we inferred on so we know images with no fish are counted")
         
         # Merge with site IDs
         site_ids = None
@@ -158,6 +160,9 @@ class YOLOResults:
                 print("usually this is due to missing metadata for some images, or images that were not inferred")
                 print(f"There are {len(list(set(im_inferred).difference(set(im_in_meta))))} images that were inferred but not in metadata")
                 print(f"There are {len(list(set(im_in_meta).difference(set(im_inferred))))} images in metadata but not inferred")
+                print("##############")
+                print("If this is for Biomass estimate, please curate the metadata input to reflect the infer image list using prepareMetadata.py so the correct no fish areas are counted")
+                print("##############")
                 base_path = os.path.dirname(yolo_infer_path)
                 with open(os.path.join(base_path, "discrepancy.txt"), "w") as f:
                     discrepant_images = list(set(im_inferred).difference(set(im_in_meta)))
@@ -363,7 +368,9 @@ class LBLResults:
             if df_combined["CollectID"].isna().any():
                 print("Some rows have missing CollectID after merging metadata and inference results.")  # <-- add this print
                 # Optionally: raise ValueError("Some rows have missing CollectID after merging metadata and inference results.")
-            print("Combined labels and metadata", df_combined.shape)
+            print("Combined labels and metadata objects (including lines for no fish images)", df_combined.shape)
+            print("Combined labels and metadata images", len(df_combined.Filename.unique()))
+            print("This should be the exact length of the image list we inferred on so we know images with no fish are counted")
         
         # Merge with site IDs
         site_ids = None
@@ -386,7 +393,7 @@ class LBLResults:
         if meta_path is not None and isinstance(meta_path, str) and meta_path.strip() != "":
             expected_rows = metadata.shape[0] - n_im_lbld + lbls.shape[0]
             if expected_rows != df_combined.shape[0]:
-                print(f"Warning, some discrepancy when joining metadata, substrate, and labeled data: {metadata.shape[0]} - {n_im_lbld} + {lbls.shape[0]} != {df_combined.shape[0]}")
+                print(f"Warning, some discrepancy when joining metadata, substrate, and labeled data: the number of expected images does not match the output")
                 print("usually this is due to missing metadata for some images, or images that were not labeled")
                 print(f"There are {len(list(set(im_lbld).difference(set(im_in_meta))))} images that were labeled but not in metadata")
                 print(f"There are {len(list(set(im_in_meta).difference(set(im_lbld))))} images in metadata but not labeled")
@@ -462,21 +469,6 @@ class LBLResults:
             lblres = ResultsUtils.calc_fish_wt(lblres)
             lblres = ResultsUtils.calc_fish_wt_corr(lblres)
         return lblres
-
-# if __name__ == "__main__":
-#     # Example usage:
-#     meta_path = "path/to/metadata.csv"
-#     yolo_lbl_path = "path/to/labels.csv"
-#     substrate_path = "path/to/substrate_predictions.csv"
-#     op_path = "path/to/OP_table.xlsx" # operations table at collect level with Suvey123 information
-
-#     # Initialize the output class
-#     output = LBLResults(meta_path, yolo_lbl_path, substrate_path, op_path)
-
-#     lblres = output.lbl_results()
-
-#     # Save or further process lblres as needed
-#     print(lblres.head())
 
 class ResultsUtils:
     """

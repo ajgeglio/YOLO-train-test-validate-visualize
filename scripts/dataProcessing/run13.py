@@ -29,14 +29,14 @@ CONFIG = {
         "YOLO_DATASET_FOLDER": Path(r"D:\ageglio-1\gobyfinder_yolov8\datasets\AUV_datasets\run13"),
         
         # HNM (Hard Negative Mining) Paths
-        "HNM_INFERENCE_RESULTS": Path(r"Z:\__AdvancedTechnologyBackup\03_InferenceResults\GobyFinder\HNM data"),
+        "HNM_INFERENCE_RESULTS": Path(r"Z:\__AdvancedTechnologyBackup\03_InferenceResults\GobyFinder\HNM data 2"),
     },
     
     # Collect IDs for splitting data
     "COLLECT_IDS": {
         "transects": {
             "20200806_001_Iver3069_ABS1", "20200816_001_Iver3069_ABS1", "20210825_001_Iver3069_ABS1", 
-            "20210720_001_Iver3069_ABS1"
+            "20210720_001_Iver3069_ABS1", "20240618_001_Iver3069_ABS2", "20240804_001_Iver3069_ABS2"
         },
         "test": {
             "20200809_001_Iver3069_ABS1", "20200818_001_Iver3069_ABS1", "20200902_001_Iver3069_ABS1", 

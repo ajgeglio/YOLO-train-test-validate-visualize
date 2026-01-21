@@ -21,9 +21,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Filter and clean all image metadata to get usable GOBY-assessed collects for a specified year.")
     
     # Required Paths
-    parser.add_argument("--metadata_folder", type=pathlib.Path, 
-        default=r"Z:\__AdvancedTechnologyBackup\07_Database\MetadataCombined",
-        help="Path to the directory containing all_unpacked_images_metadata*.pkl/pickle files."
+    parser.add_argument("--combined_metadata", type=pathlib.Path, 
+        help="Path to the master metadata file to filter out of."
     )
     parser.add_argument("--output_folder", type=pathlib.Path, 
         default=r"Z:\__AdvancedTechnologyBackup\07_Database\MetadataCombined",
@@ -40,16 +39,11 @@ def parse_args():
     parser.add_argument("--img_list_file", type=pathlib.Path, required=False,
         help="Path to the image list file. Used to generate a list of image filenames for filtering."
     )
-    parser.add_argument("--tiled", action="store_true", help="Metadata must be formatted for a tiled images"
-    )
-    parser.add_argument("--annotated", action="store_true", help="Metadata from annotated database"
+    parser.add_argument("--tiled", action="store_true", help="Format full image metatdata for tiled images metadata output"
     )
     # Mutually Exclusive Filtering Options
-    group = parser.add_mutually_exclusive_group(required=True) # Made group required
-    group.add_argument("--image_list_filter", action="store_true",
-        help="Filter metadata based on filenames found in --img_directory or --image_list_file."
-    )
-    group.add_argument("--goby_collects_filter", action="store_true",
+    group = parser.add_mutually_exclusive_group() 
+    group.add_argument("--all_goby_collects", action="store_true",
         help="Filter metadata to include only 'GOBY == 1' assessed collects from the OP table."
     )
     group.add_argument("--CollectID", type=str, help="Specific COLLECT ID to filter the metadata."
@@ -72,47 +66,32 @@ def choose_best_column(df, candidates):
 # --- Data Loading and Filtering ---
 def load_metadata(args: argparse.Namespace) -> pd.DataFrame:
     """Loads the latest combined metadata pickle file from the specified folder."""
-    if not args.metadata_folder.exists():
-        print(f"Error: Metadata folder not found at {args.metadata_folder}, exiting.")
+    if not args.combined_metadata.exists():
+        print(f"Error: Metadata file not found at {args.combined_metadata}, exiting.")
         sys.exit(1)
 
-    print(f"Loading metadata from: {args.metadata_folder}")
+    print(f"Loading metadata from: {args.combined_metadata}")
     
-    if not args.annotated:
-        # Glob for both .pkl and .pickle files, and sort to find the latest one
-        metadata_files = list(args.metadata_folder.glob("all_unpacked_images_metadata*.pkl"))
-        metadata_files.extend(list(args.metadata_folder.glob("all_unpacked_images_metadata*.pickle")))
-
-        if not metadata_files:
-            print(f"No metadata files found in {args.metadata_folder}, exiting.")
-            sys.exit(1)
-
-        # Sort files lexicographically (assuming YYYYmmdd dates in filename)
-        metadata_files.sort(reverse=True)
-        latest_metadata_file = metadata_files[0]
+    # get the extension of the metadata file
+    meta_ext = str(args.combined_metadata).split(".")[-1]
+    
+    if meta_ext == "pkl" or meta_ext == "pickle":
         try:
-            metadata = pd.read_pickle(latest_metadata_file)
+            metadata = pd.read_pickle(args.combined_metadata)
 
         except Exception as e:
             print(f"Error loading metadata pickle file: {e}")
             sys.exit(1)
 
-    elif args.annotated:
-        # Glob for both .pkl and .pickle files, and sort to find the latest one
-        metadata_files = list(args.metadata_folder.glob("all_annotated_images_metadata*.csv"))
-
-        if not metadata_files:
-            print(f"No metadata files found in {args.metadata_folder}, exiting.")
-            sys.exit(1)
-
-        # Sort files lexicographically (assuming YYYYmmdd dates in filename)
-        metadata_files.sort(reverse=True)
-        latest_metadata_file = metadata_files[0]
+    elif meta_ext == "csv":
         try:
-            metadata = pd.read_csv(latest_metadata_file, index_col=0, low_memory=False)
+            metadata = pd.read_csv(args.combined_metadata, index_col=0, low_memory=False)
         except Exception as e:
             print(f"Error loading metadata pickle file: {e}")
             sys.exit(1)
+    else:
+        print(f"No metadata file at {args.combined_metadata}, exiting.")
+        sys.exit(1)
 
     # --- Normalize CollectID column ---
     collect_candidates = ["CollectID", "collect_id"]
@@ -133,7 +112,6 @@ def load_metadata(args: argparse.Namespace) -> pd.DataFrame:
     # Convert CollectID to string for consistent filtering
     metadata['CollectID'] = metadata['CollectID'].astype(str)
     
-    print(f"Loading latest metadata file: {latest_metadata_file}")
     return metadata
 
 
@@ -158,7 +136,7 @@ def return_img_list(args: argparse.Namespace) -> List[str]:
     """Retrieves image filenames from the provided directory."""
     if not args.img_directory:
         if not args.img_list_file:
-            raise ValueError("The --image_list_filter flag requires --img_directory or --image_list_file to be provided.")
+            print("Warning, no --img_directory or --image_list_file argument will return empty image list.")
         
     if args.img_directory:
         img_dir = args.img_directory
@@ -175,7 +153,9 @@ def return_img_list(args: argparse.Namespace) -> List[str]:
         print(f"found {len(image_path_list)} images in: {args.img_list_file}")
 
     if not image_path_list:
-        raise ValueError(f"No images found in directory: {img_dir}")  
+        print(f"No images found in directory {img_dir} or list file {image_path_list}")
+        filenames = []
+        tilenames = []
     if args.tiled:
         tilenames = [os.path.basename(p) for p in image_path_list]
         filenames = list(map(lambda x: Utils.convert_tile_img_pth_to_basename(x), image_path_list))
@@ -211,7 +191,7 @@ def usable_processed_metadata(args: argparse.Namespace) -> pd.DataFrame:
         print("Warning: No images passed the 'Metadata Thresholds'.")
 
     # 2. Apply User Filter
-    if args.goby_collects_filter:
+    if args.all_goby_collects:
         collect_list = filter_goby_collects(args.op_table_pth)
         meta_usable_filtered = meta_usable[meta_usable.CollectID.isin(collect_list)].copy()
         filter_type = "GOBY Collects"
@@ -221,24 +201,30 @@ def usable_processed_metadata(args: argparse.Namespace) -> pd.DataFrame:
         meta_usable_filtered = meta_usable[meta_usable.CollectID.isin(collect_list)].copy()
         filter_type = f"Collect ID: {args.CollectID}"
 
-    elif args.image_list_filter:
-        image_list, tile_list = return_img_list(args)
-        if args.tiled:
-            assert len(image_list) == len(tile_list)
-            df = pd.DataFrame(np.c_[image_list, tile_list], columns=["Filename", "Tilename"])
-            meta_usable_filtered = meta_usable[meta_usable.Filename.isin(image_list)].copy()
-            meta_usable_filtered = pd.merge(df, meta_usable_filtered, on="Filename", how="left")
-            meta_usable_filtered = meta_usable_filtered.rename(columns={"Filename":"BaseFilename"})
-            meta_usable_filtered = meta_usable_filtered.rename(columns={"Tilename":"Filename"})
-        else:
-            meta_usable_filtered = meta_usable[meta_usable.Filename.isin(image_list)].copy()
-        filter_type = "Image List"
-    
     else:
-        # This shouldn't be reached due to required=True in argparse group
-        print("Error: No filtering option was selected. Exiting.")
-        sys.exit(1)
-
+        filenames, tilenames = return_img_list(args)
+        print(f"filtering metadata based on {len(filenames)} images")
+        filter_type = "image list"
+        if len(filenames) == 0:
+            filter_type = "usable only"
+            print(f"Not filtering on image list, will return the input combined metadata filtered for usability only")
+            meta_usable_filtered = meta_usable.copy()
+            if args.tiled:
+                raise ValueError("cannot convert metadata to tiled metadata without a tiled image path list")
+        if args.tiled:
+            if len(tilenames) == 0:
+                raise ValueError("no tilenames were found to convert to tiled metadata")
+            else:
+                print(f"Changing full image metadata to tiled metadata based on {len(tilenames)} tiled images")
+                assert len(filenames) == len(tilenames)
+                df = pd.DataFrame(np.c_[filenames, tilenames], columns=["Filename", "Tilename"])
+                meta_usable_filtered = meta_usable[meta_usable.Filename.isin(set(filenames))].copy()
+                meta_usable_filtered = pd.merge(df, meta_usable_filtered, on="Filename", how="left")
+                meta_usable_filtered = meta_usable_filtered.rename(columns={"Filename":"BaseFilename"})
+                meta_usable_filtered = meta_usable_filtered.rename(columns={"Tilename":"Filename"})
+        else:
+            meta_usable_filtered = meta_usable[meta_usable.Filename.isin(set(filenames))].copy()
+        
     filt_shape = meta_usable_filtered.shape[0]
     print(f"Metadata filtered by {filter_type} count: {filt_shape}")
     
@@ -253,17 +239,9 @@ def usable_processed_metadata(args: argparse.Namespace) -> pd.DataFrame:
     # Filename NaN Check
     drop_fnn = meta_usable_filtered.dropna(subset=["Filename"]).shape[0]
     assert filt_shape - drop_fnn == 0, f"ERROR: {filt_shape - drop_fnn} missing 'Filename' entries found."
-    
-    # Image Path Deduplication Check
-    # NOTE: The metadata must be deduplicated by 'Filename' or 'image_path' prior to this script 
-    # if a single file appears multiple times. We only check for duplicates here.
-    drop_ipd = meta_usable_filtered.drop_duplicates(subset=["image_path"]).shape[0]
-    if args.tiled:
-        assert drop_ipd - len(list(set(image_list))) == 0 , f"ERROR {drop_ipd - len(list(set(image_list)))} duplicate 'image_path' entries found."
-    else:
-        assert filt_shape - drop_ipd == 0, f"ERROR: {filt_shape - drop_ipd} duplicate 'image_path' entries found."
-    
+      
     # Time_s NaN Check
+    print(meta_usable_filtered.head(3))
     drop_tsn = meta_usable_filtered.dropna(subset=["Time_s"]).shape[0]
     assert filt_shape - drop_tsn == 0, f"ERROR: {filt_shape - drop_tsn} missing 'Time_s' (timestamps) entries found."
     
@@ -284,8 +262,11 @@ def usable_processed_metadata(args: argparse.Namespace) -> pd.DataFrame:
     print(f"Final processed table shape: {meta_usable_filtered.shape}")
     
     # Calculate median time interval for QA
-    medians = meta_usable_filtered.groupby('CollectID')['Time_s'].apply(lambda x: x.diff()).values
-    print(f"Average median time interval (for QA): {np.nanmedian(medians):.4f} seconds.")
+    if args.tiled:
+        medians = meta_usable_filtered.drop_duplicates(subset="BaseFilename").groupby('CollectID')['Time_s'].apply(lambda x: x.diff()).values
+    else:
+        medians = meta_usable_filtered.groupby('CollectID')['Time_s'].apply(lambda x: x.diff()).values
+    print(f"Median median time interval per survey (for QA should be around 5 sec for biomass): {np.nanmedian(medians):.4f} seconds.")
     
     return meta_usable_filtered
 
@@ -304,11 +285,10 @@ def main():
     # 3. Determine output path and save
     if args.CollectID:
         filename = f"processed_metadata_{args.CollectID}_{Ymmdd}.csv"
-    elif args.image_list_filter:
-        # Use image_list_filter in filename for clarity
-        filename = f"processed_metadata_image_list_filter_{Ymmdd}.csv" 
-    else: # Default to goby_collects_filter
+    elif args.all_goby_collects:
         filename = f"processed_metadata_goby_collects_filter_{Ymmdd}.csv"
+    else:
+        filename = f"processed_metadata_filter_{Ymmdd}.csv" 
 
     # CRITICAL BUG FIX: args.out_folder -> args.output_folder
     path = args.output_folder / filename

@@ -16,7 +16,7 @@ except ImportError:
 CONFIG = {
     "PATHS": {
         "OP_TABLE": Path(r"Z:\__AdvancedTechnologyBackup\07_Database\OP_TABLE.xlsx"),
-        "METADATA_COMBINED": Path(r"Z:\__AdvancedTechnologyBackup\07_Database\MetadataCombined\all_annotated_images_metadata_20260115.csv"),
+        "METADATA_COMBINED": Path(r"Z:\__AdvancedTechnologyBackup\07_Database\MetadataCombined\all_annotated_images_metadata_20260121.csv"),
         "ADDL_SPECIES_LOG": Path(r"z:\__AdvancedTechnologyBackup\07_Database\addl_species_log.xlsx"),
         
         # Output Directories

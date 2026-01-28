@@ -8,7 +8,7 @@ from collections import defaultdict
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Reconstruct (Untile) datasets from tiles")
-    parser.add_argument('--directory', required=True, help="Directory containing the 'tiled' folder")
+    parser.add_argument('--directory', required=True, help="Directory of the 'tiled' folder, or, the directory with the 'images' and 'labels' subfolders containing tiled images/labels.")
     parser.add_argument('--output_dir', default=None, help="Directory to save reconstructed images/labels.")
     parser.add_argument('--image_width', type=int, default=None, help="Force original image width")
     parser.add_argument('--image_height', type=int, default=None, help="Force original image height")
@@ -201,7 +201,7 @@ def reconstruct_labels(grouped_labels, output_dir, args, grouped_images_ref=None
 
 def main():
     args = parse_arguments()
-    output_dir = args.output_dir if args.output_dir else os.path.join(os.path.abspath(args.directory), "untiled")
+    output_dir = args.output_dir if args.output_dir else os.path.join(os.path.dirname(os.path.abspath(args.directory)), "untiled")
     
     if os.path.basename(os.path.abspath(args.directory)) in ['images', 'labels']:
         base = os.path.dirname(os.path.abspath(args.directory))

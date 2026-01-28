@@ -348,6 +348,104 @@ class Utils:
         df.to_csv(lbl_file, header=None, sep=' ', index=False)
 
     @staticmethod
+    def load_yolo(path):
+        # If file doesn't exist → empty
+        if not os.path.exists(path):
+            return np.zeros((0, 5), dtype=float)
+
+        # If file exists but is empty → empty
+        if os.path.getsize(path) == 0:
+            return np.zeros((0, 5), dtype=float)
+        try:
+            arr = np.loadtxt(path, ndmin=2)
+        except ValueError:
+            # Handles weird cases: whitespace-only, malformed, etc.
+            return np.zeros((0, 5), dtype=float)
+
+        # Ensure correct shape (N, 5)
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+
+        return arr
+
+    @staticmethod
+    def to_xyxy(b):
+        x, y, w, h = b
+        return np.array([x - w/2, y - h/2, x + w/2, y + h/2])
+
+    @staticmethod
+    def iou(box1, box2):
+        b1 = Utils.to_xyxy(box1)
+        b2 = Utils.to_xyxy(box2)
+
+        inter_w = max(0, min(b1[2], b2[2]) - max(b1[0], b2[0]))
+        inter_h = max(0, min(b1[3], b2[3]) - max(b1[1], b2[1]))
+        inter_area = inter_w * inter_h
+
+        area1 = (b1[2]-b1[0]) * (b1[3]-b1[1])
+        area2 = (b2[2]-b2[0]) * (b2[3]-b2[1])
+
+        return inter_area / (area1 + area2 - inter_area + 1e-9)
+        
+    @staticmethod
+    def detection_metrics(r_boxes, h_boxes, iou_thresh=0.5):
+        """
+        r_boxes = ground truth (random annotator)
+        h_boxes = predictions (HNM annotator)
+        """
+
+        # No boxes at all
+        if len(r_boxes) == 0 and len(h_boxes) == 0:
+            return dict(TP=0, FP=0, FN=0, precision=1.0, recall=1.0, f1=1.0, ap=1.0)
+
+        # Match boxes (returns list of IoUs for matched pairs)
+        matches = Utils.match_boxes(r_boxes, h_boxes)
+
+        TP = sum(iou >= iou_thresh for iou in matches)
+        FP = len(h_boxes) - TP
+        FN = len(r_boxes) - TP
+
+        precision = TP / (TP + FP + 1e-9)
+        recall = TP / (TP + FN + 1e-9)
+        f1 = 2 * precision * recall / (precision + recall + 1e-9)
+
+        # AP for a single operating point (no confidences)
+        ap = precision * recall  # simple approximation for single-threshold AP
+
+        return dict(
+            TP=TP,
+            FP=FP,
+            FN=FN,
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            ap=ap
+        )
+    
+    @staticmethod
+    def match_boxes(r_boxes, h_boxes):
+        matches = []
+        used_h = set()
+
+        for i, rb in enumerate(r_boxes):
+            best_j = None
+            best_iou = 0
+
+            for j, hb in enumerate(h_boxes):
+                if j in used_h:
+                    continue
+                iou_val = Utils.iou(rb[1:], hb[1:])
+                if iou_val > best_iou:
+                    best_iou = iou_val
+                    best_j = j
+
+            if best_j is not None:
+                matches.append(best_iou)
+                used_h.add(best_j)
+
+        return matches
+
+    @staticmethod
     def return_n_objects_in_lbl(lbl_file):
         try:
             n_objects = pd.read_csv(lbl_file, delimiter=' ', header=None).shape[0]
